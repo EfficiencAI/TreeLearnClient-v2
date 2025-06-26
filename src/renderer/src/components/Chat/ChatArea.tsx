@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -29,54 +29,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   
   // 获取实际应用的主题（处理 auto 模式）
   const actualTheme = themeUtils.getActualTheme(settings.theme)
-
-    // 初始节点数据 - 使用实际主题和 isDarkMode
-  const initialNodes: Node[] = [
-    {
-      id: '1',
-      type: 'input',
-      data: { label: '开始节点' },
-      position: { x: 250, y: 25 },
-      style: { 
-        background: isDarkMode ? '#2a2b2c' : '#ffffff',
-        color: isDarkMode ? '#ffffff' : '#000000',
-        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
-      }
-    },
-    {
-      id: '2',
-      data: { label: '处理节点' },
-      position: { x: 100, y: 125 },
-      style: { 
-        background: isDarkMode ? '#2a2b2c' : '#ffffff',
-        color: isDarkMode ? '#ffffff' : '#000000',
-        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
-      }
-    },
-    {
-      id: '3',
-      type: 'output',
-      data: { label: '结束节点' },
-      position: { x: 400, y: 125 },
-      style: { 
-        background: isDarkMode ? '#2a2b2c' : '#ffffff',
-        color: isDarkMode ? '#ffffff' : '#000000',
-        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
-      }
-    },
-  ]
-
-  const initialEdges: Edge[] = []
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-
-    // 根据主题动态计算样式 - 使用 isDarkMode
+  // 根据主题动态计算样式 - 使用 isDarkMode
   const flowStyles = useMemo(() => ({
     backgroundColor: isDarkMode ? '#1a1b1c' : '#f7fafc',
     color: isDarkMode ? '#ffffff' : '#000000',
   }), [isDarkMode])
-
   // 背景样式配置
   const backgroundConfig = useMemo(() => ({
     variant: 'dots' as BackgroundVariant,
@@ -84,13 +41,141 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     size: 1,
     color: isDarkMode ? '#4a5568' : '#e2e8f0',
   }), [isDarkMode])
-
   // 控件样式
   const controlsStyle = useMemo(() => ({
     background: isDarkMode ? '#2a2b2c' : '#ffffff',
     border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
     borderRadius: '8px',
   }), [isDarkMode])
+
+  // 创建会话节点的函数
+  const createSessionNode = useCallback((sessionId: string): Node => {
+    return {
+      id: 'session-node',
+      type: 'input',
+      data: { 
+        label: `会话: ${sessionId}`,
+        sessionId: sessionId,
+        isSessionNode: true
+      },
+      position: { x: 250, y: 25 },
+      style: { 
+        background: isDarkMode ? '#4a5568' : '#e6f3ff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        border: `2px solid ${isDarkMode ? '#6366f1' : '#4f46e5'}`,
+        borderRadius: '8px',
+        fontWeight: 'bold',
+        minWidth: '200px',
+        textAlign: 'center'
+      },
+      draggable: true,
+      selectable: false, // 不可选择
+      deletable: false   // 不可删除
+    }
+  }, [isDarkMode]);
+
+  const getInitialNodes = useCallback((): Node[] => {
+    const baseNodes: Node[] = []
+    
+    // 如果是会话模式且有会话ID，添加会话节点
+    if (isConversationMode && currentSession) {
+      baseNodes.push(createSessionNode(currentSession))
+    }
+    
+    return baseNodes
+  }, [isConversationMode, currentSession, createSessionNode])
+
+  const initialEdges: Edge[] = []
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(getInitialNodes())
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  // 自定义节点变化处理函数，保护会话节点
+  const handleNodesChange = useCallback((changes: any[]) => {
+    // 过滤掉删除会话节点的操作
+    const filteredChanges = changes.filter(change => {
+      if (change.type === 'remove' && change.id === 'session-node') {
+        return false // 阻止删除会话节点
+      }
+      return true
+    })
+    
+    onNodesChange(filteredChanges)
+  }, [onNodesChange])
+
+    // 监听会话变化，动态更新会话节点
+  useEffect(() => {
+    if (isConversationMode && currentSession) {
+      const sessionNode = createSessionNode(currentSession)
+      
+      setNodes(prevNodes => {
+        // 检查是否已存在会话节点
+        const hasSessionNode = prevNodes.some(node => node.id === 'session-node')
+        
+        if (!hasSessionNode) {
+          // 添加会话节点到开头
+          return [sessionNode, ...prevNodes]
+        } else {
+          // 更新现有会话节点
+          return prevNodes.map(node => 
+            node.id === 'session-node' ? sessionNode : node
+          )
+        }
+      })
+    } else {
+      // 非会话模式时移除会话节点
+      setNodes(prevNodes => prevNodes.filter(node => node.id !== 'session-node'))
+    }
+  }, [isConversationMode, currentSession, createSessionNode, setNodes])
+
+  const customStyles = useMemo(() => ({
+    chatArea: {
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }
+  }), [])
+
+  // 动态生成CSS字符串
+  const dynamicStyles = useMemo(() => `
+    .react-flow__node {
+      font-size: 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+    }
+    
+    .react-flow__node:hover {
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    .react-flow__node.selected {
+      box-shadow: 0 0 0 2px ${isDarkMode ? '#6366f1' : '#4f46e5'};
+    }
+    
+    .react-flow__node[data-id="session-node"] {
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+      50% { box-shadow: 0 4px 16px rgba(99, 102, 241, 0.5); }
+      100% { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+    }
+    
+    .react-flow__controls {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .react-flow__controls-button {
+      background: ${isDarkMode ? '#374151' : '#f9fafb'};
+      border: 1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'};
+      color: ${isDarkMode ? '#ffffff' : '#374151'};
+    }
+    
+    .react-flow__controls-button:hover {
+      background: ${isDarkMode ? '#4b5563' : '#f3f4f6'};
+    }
+  `, [isDarkMode])
 
   return (
     <div className="chat-area" style={{ height: '100vh', width: '100%' }}>
@@ -134,10 +219,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           fitView
           attributionPosition="bottom-left"
+          onNodesDelete={(nodesToDelete) => {
+            // 阻止删除会话节点
+            const filteredNodes = nodesToDelete.filter(node => node.id !== 'session-node')
+            if (filteredNodes.length > 0) {
+              // 这里可以添加其他节点的删除逻辑
+              console.log('删除节点:', filteredNodes)
+            }
+          }}
         >
           {/* 控制面板 */}
           <Controls 
@@ -175,7 +268,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           {/* 空状态提示 */}
           {nodes.length === 0 && (
             <Panel 
-              position="center"
+              position="top-center"
               style={{
                 background: settings.theme === 'dark' ? '#2a2b2c' : '#ffffff',
                 border: `1px solid ${settings.theme === 'dark' ? '#4a5568' : '#e2e8f0'}`,
@@ -183,6 +276,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 padding: '24px',
                 color: settings.theme === 'dark' ? '#a0aec0' : '#718096',
                 textAlign: 'center',
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10
               }}
             >
               <div>
@@ -196,41 +294,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         </ReactFlow>
       </div>
 
-      {/* 自定义样式 */}
-      <style jsx>{`
-        .chat-area {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        .react-flow__node {
-          font-size: 12px;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          transition: all 0.2s ease;
-        }
-        
-        .react-flow__node:hover {
-          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-        }
-        
-        .react-flow__node.selected {
-          box-shadow: 0 0 0 2px ${isDarkMode ? '#6366f1' : '#4f46e5'};
-        }
-        
-        .react-flow__controls {
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .react-flow__controls-button {
-          background: ${isDarkMode ? '#374151' : '#f9fafb'};
-          border: 1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'};
-          color: ${isDarkMode ? '#ffffff' : '#374151'};
-        }
-        
-        .react-flow__controls-button:hover {
-          background: ${isDarkMode ? '#4b5563' : '#f3f4f6'};
-        }
-      `}</style>
+      <style dangerouslySetInnerHTML={{ __html: dynamicStyles }} />
+
     </div>
   )
 }

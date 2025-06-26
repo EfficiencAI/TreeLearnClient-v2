@@ -5,7 +5,6 @@ import { UserInfo } from './share/share'
 import Sidebar from './components/Sidebar/Sidebar'
 import ChatHeader from './components/Chat/ChatHeader'
 import ChatArea from './components/Chat/ChatArea'
-import NodeTreeView from './components/Chat/NodeTreeView'
 import LoginPage from './components/Pages/LoginPage'
 import RegisterPage from './components/Pages/RegisterPage'
 import './assets/ChatPage.css'
@@ -15,7 +14,6 @@ const AppContent: React.FC = () => {
   const { user, isLoading, isAuthenticated, login } = useAuth()
   const [currentSession, setCurrentSession] = useState<string>('')
   const [isConversationMode, setIsConversationMode] = useState(false)
-  const [showNodeTree, setShowNodeTree] = useState(false)
   const [nodeTreeSession, setNodeTreeSession] = useState('')
   const [activeChat, setActiveChat] = useState(0)
   const [showRegister, setShowRegister] = useState(false)
@@ -44,7 +42,6 @@ const AppContent: React.FC = () => {
       setSelectedParentInfo(null) // 重置父节点信息
     } else if (action === 'viewNodes') {
       setNodeTreeSession(sessionName)
-      setShowNodeTree(true)
     }
   }
 
@@ -53,7 +50,6 @@ const AppContent: React.FC = () => {
     setSelectedParentId(parentId)
     setCurrentSession(nodeTreeSession) // 添加这行：设置当前会话
     setIsConversationMode(true) // 选择父节点时进入对话模式
-    setShowNodeTree(false) // 关闭节点树视图
 
     // 获取父节点的详细信息
     if (user?.userId && nodeTreeSession) {
