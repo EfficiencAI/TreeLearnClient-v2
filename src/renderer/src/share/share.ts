@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react'
+import { createContext, useContext } from 'react'
 
 // 主题类型定义
 export type Theme = 'light' | 'dark' | 'auto'

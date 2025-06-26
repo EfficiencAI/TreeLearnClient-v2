@@ -429,8 +429,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     selectedText?: string
     contextStartIdx?: number
     contextEndIdx?: number
-    // 新增：AI回答的完整文本
+    // AI回答的完整文本
     aiResponseText?: string
+    // 更新模式相关字段
+    isUpdateMode?: boolean
+    updateNodeId?: string
+    originalUserMessage?: string
   } | null>(null)
 
   // 文本选择相关状态
@@ -503,21 +507,23 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         })
       )
 
-      // 添加连接边
-      const newEdge: Edge = {
-        id: `edge_${newNodeDialog?.parentNodeId}_${nodeId}`,
-        source: newNodeDialog?.parentNodeId || '',
-        target: nodeId,
-        style: { 
-          stroke: isDarkMode ? '#6b7280' : '#9ca3af',
-          strokeWidth: 2
-        },
-        animated: false
+      // 只在非更新模式下添加连接边
+      if (!newNodeDialog?.isUpdateMode) {
+        const newEdge: Edge = {
+          id: `edge_${newNodeDialog?.parentNodeId}_${nodeId}`,
+          source: newNodeDialog?.parentNodeId || '',
+          target: nodeId,
+          style: { 
+            stroke: isDarkMode ? '#6b7280' : '#9ca3af',
+            strokeWidth: 2
+          },
+          animated: false
+        }
+
+        setEdges(prevEdges => [...prevEdges, newEdge])
       }
 
-      setEdges(prevEdges => [...prevEdges, newEdge])
-
-      console.log('节点创建完成:', nodeId)
+      console.log(newNodeDialog?.isUpdateMode ? '节点更新完成:' : '节点创建完成:', nodeId)
 
     } catch (error) {
       console.error('处理流式响应失败:', error)
@@ -686,84 +692,253 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     )
   }, [isDarkMode])
 
-  // 确认创建新节点
+  // 删除节点的所有子节点
+  const deleteChildNodes = useCallback(async (nodeId: string): Promise<boolean> => {
+    if (!user?.userId || !currentSession) {
+      return false
+    }
+
+    try {
+      // 获取节点信息
+      const nodeResponse = await conversationAPI.get(nodeId, user.userId, currentSession)
+      
+      if (nodeResponse.code === 200 && nodeResponse.obj?.LinkedConversationNodesID) {
+        const childIds = nodeResponse.obj.LinkedConversationNodesID
+        
+        // 串行删除所有子节点（包括它们的子节点）
+        for (const childId of childIds) {
+          const deleteResponse = await conversationAPI.delete(childId, user.userId, currentSession)
+          if (deleteResponse.code !== 200) {
+            console.error(`删除子节点 ${childId} 失败:`, deleteResponse.msg)
+            return false
+          }
+        }
+      }
+      
+      return true
+    } catch (error) {
+      console.error('删除子节点时发生错误:', error)
+      return false
+    }
+  }, [user?.userId, currentSession])
+
+  // 确认创建新节点或更新节点
   const handleConfirmAddNode = useCallback(async () => {
     if (!newNodeDialog || !user?.userId || !currentSession || !userInput.trim()) {
-      console.error('创建节点信息不完整')
+      console.error('操作信息不完整')
       return
     }
 
     setIsCreatingNode(true)
 
     try {
-      const { parentNodeId, nodeType, contextStartIdx, contextEndIdx } = newNodeDialog
+      const { parentNodeId, nodeType, contextStartIdx, contextEndIdx, isUpdateMode, updateNodeId } = newNodeDialog
       
-      // 生成新节点ID
-      const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      if (isUpdateMode && updateNodeId) {
+        // 更新模式
+        console.log('更新节点:', updateNodeId)
+        
+        // 先删除子节点
+        const deleteSuccess = await deleteChildNodes(updateNodeId)
+        if (!deleteSuccess) {
+          throw new Error('删除子节点失败')
+        }
+        
+        // 准备更新请求参数
+        const requestParams = {
+          userId: user.userId,
+          sessionName: currentSession,
+          conversationNodeId: updateNodeId,
+          parentId: '', // 更新时不需要修改父节点关系
+          userMessage: userInput.trim(),
+          contextStartIdx: String(contextStartIdx || 0),
+          contextEndIdx: String(contextEndIdx || -1),
+          message: userInput.trim(),
+          apikey: settings.apiKey || '',
+          baseurl: settings.baseUrl || '',
+          modelName: settings.modelName || settings.defaultModel,
+          systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
+          mcpUrls: []
+        }
 
-      // 修正父节点ID
-      let actualParentId: string | number
-      if (parentNodeId === 'session-node') {
-        // 会话节点作为父节点时使用 -1
-        actualParentId = -1
+        console.log('发送更新请求参数:', requestParams)
+
+        // 先更新UI中的节点状态为加载中
+        setNodes(prevNodes => 
+          prevNodes.map(node => {
+            if (node.id === updateNodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: `👤 ${userInput.trim()}\n\n🤖 正在重新思考中...`,
+                  userMessage: userInput.trim(),
+                  message: '',
+                  isLoading: true
+                },
+                style: {
+                  ...node.style,
+                  border: `2px solid ${isDarkMode ? '#6366f1' : '#4f46e5'}`,
+                  animation: 'pulse 1.5s infinite'
+                }
+              }
+            }
+            return node
+          })
+        )
+
+        // 发送流式更新请求
+        const stream = await conversationAPI.update(requestParams)
+        
+        if (stream) {
+          // 处理流式响应
+          await handleStreamResponse(stream, updateNodeId, userInput.trim())
+          
+          // 更新成功后重新加载会话数据以确保一致性
+          console.log('🎉 节点更新成功! 重新加载会话数据...')
+          
+          // 重新加载整个会话的节点数据
+          await loadSessionNodes()
+          
+          // 显示成功提示
+          const successMessage = document.createElement('div')
+          successMessage.innerHTML = '🎉 重新提问成功！会话已更新'
+          successMessage.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${isDarkMode ? '#065f46' : '#d1fae5'};
+            color: ${isDarkMode ? '#ffffff' : '#065f46'};
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 3000;
+            animation: slideInRight 0.3s ease-out;
+          `
+          document.body.appendChild(successMessage)
+          
+          // 3秒后自动移除
+          setTimeout(() => {
+            if (successMessage.parentNode) {
+              successMessage.remove()
+            }
+          }, 3000)
+        } else {
+          throw new Error('未能获取到流式响应')
+        }
+        
       } else {
-        // 对话节点作为父节点时使用其 conversationNodeId
-        const parentNode = nodes.find(node => node.id === parentNodeId)
-        actualParentId = parentNode?.id || parentNodeId
-      }
-      
-      // 准备请求参数
-      const requestParams = {
-        userId: user.userId,
-        sessionName: currentSession,
-        conversationNodeId: newNodeId,
-        parentId: actualParentId,
-        userMessage: userInput.trim(),
-        // 根据节点类型设置上下文参数
-        contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
-        contextEndIdx: nodeType === 'question' ? '' : String(contextEndIdx || -1),
-        message: userInput.trim(),
-        // 使用用户设置中的配置
-        apikey: settings.apiKey || '',
-        baseurl: settings.baseUrl || '',
-        modelName: settings.modelName || settings.defaultModel,
-        systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
-        mcpUrls: [] // 根据需要配置
-      }
+        // 原有的新增逻辑保持不变
+        const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-      console.log(`创建${nodeType === 'question' ? '提问' : '追问'}节点:`, {
-        nodeId: newNodeId,
-        parentId: parentNodeId,
-        userMessage: userInput.trim(),
-        contextRange: nodeType === 'followup' ? `${contextStartIdx}-${contextEndIdx}` : 'N/A'
-      })
+        let actualParentId: string | number
+        if (parentNodeId === 'session-node') {
+          actualParentId = -1
+        } else {
+          const parentNode = nodes.find(node => node.id === parentNodeId)
+          actualParentId = parentNode?.id || parentNodeId
+        }
+        
+        const requestParams = {
+          userId: user.userId,
+          sessionName: currentSession,
+          conversationNodeId: newNodeId,
+          parentId: actualParentId,
+          userMessage: userInput.trim(),
+          contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
+          contextEndIdx: nodeType === 'question' ? '' : String(contextEndIdx || -1),
+          message: userInput.trim(),
+          apikey: settings.apiKey || '',
+          baseurl: settings.baseUrl || '',
+          modelName: settings.modelName || settings.defaultModel,
+          systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
+          mcpUrls: []
+        }
 
-      // 先在UI中创建一个临时的加载节点
-      const tempNode = createTemporaryNode(newNodeId, parentNodeId, userInput.trim())
-      setNodes(prevNodes => [...prevNodes, tempNode])
+        console.log(`创建${nodeType === 'question' ? '提问' : '追问'}节点:`, {
+          nodeId: newNodeId,
+          parentId: parentNodeId,
+          userMessage: userInput.trim(),
+          contextRange: nodeType === 'followup' ? `${contextStartIdx}-${contextEndIdx}` : 'N/A'
+        })
 
-      console.log('发送请求参数:', requestParams)
+        const tempNode = createTemporaryNode(newNodeId, parentNodeId, userInput.trim())
+        setNodes(prevNodes => [...prevNodes, tempNode])
 
-      // 发送流式请求
-      const stream = await conversationAPI.add(requestParams)
-      
-      if (stream) {
-        // 处理流式响应
-        await handleStreamResponse(stream, newNodeId, userInput.trim())
-      } else {
-        throw new Error('未能获取到流式响应')
+        console.log('发送请求参数:', requestParams)
+
+        const stream = await conversationAPI.add(requestParams)
+        
+        if (stream) {
+          await handleStreamResponse(stream, newNodeId, userInput.trim())
+        } else {
+          throw new Error('未能获取到流式响应')
+        }
       }
 
     } catch (error) {
-      console.error('创建节点失败:', error)
-      // 移除失败的临时节点
-      setNodes(prevNodes => prevNodes.filter(node => !node.data.isLoading))
+      console.error('操作失败:', error)
+      
+      if (newNodeDialog.isUpdateMode) {
+        // 更新失败时恢复节点状态
+        setNodes(prevNodes => 
+          prevNodes.map(node => {
+            if (node.id === newNodeDialog.updateNodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: formatNodeContent(newNodeDialog.originalUserMessage, node.data.message),
+                  userMessage: newNodeDialog.originalUserMessage,
+                  isLoading: false
+                },
+                style: {
+                  ...node.style,
+                  border: `1px solid ${isDarkMode ? '#ef4444' : '#dc2626'}`, // 红色边框表示错误
+                  animation: 'none'
+                }
+              }
+            }
+            return node
+          })
+        )
+        
+        // 显示错误提示
+        const errorMessage = document.createElement('div')
+        errorMessage.innerHTML = '❌ 重新提问失败，请重试'
+        errorMessage.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: ${isDarkMode ? '#7f1d1d' : '#fef2f2'};
+          color: ${isDarkMode ? '#ffffff' : '#7f1d1d'};
+          padding: 12px 20px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 3000;
+          animation: slideInRight 0.3s ease-out;
+        `
+        document.body.appendChild(errorMessage)
+        
+        setTimeout(() => {
+          if (errorMessage.parentNode) {
+            errorMessage.remove()
+          }
+        }, 5000)
+      } else {
+        // 新增失败时移除临时节点
+        setNodes(prevNodes => prevNodes.filter(node => !node.data.isLoading))
+      }
     } finally {
       setIsCreatingNode(false)
       setNewNodeDialog(null)
       setUserInput('')
     }
-  }, [newNodeDialog, user?.userId, currentSession, userInput, settings, setNodes])
+  }, [newNodeDialog, user?.userId, currentSession, userInput, settings, setNodes, deleteChildNodes, handleStreamResponse, createTemporaryNode, formatNodeContent, isDarkMode])
 
   // 取消创建节点
   const handleCancelAddNode = useCallback(() => {
@@ -771,9 +946,88 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     setUserInput('')
   }, [])
 
-  const handleUpdateNode = useCallback((nodeId: string) => {
+  // 更新确认状态
+  const [updateConfirm, setUpdateConfirm] = useState<{
+    visible: boolean
+    nodeId: string
+    originalUserMessage: string
+    originalAIMessage: string
+    childCount: number
+    isUpdating?: boolean
+  } | null>(null)
+
+  // 处理更新节点
+  const handleUpdateNode = useCallback(async (nodeId: string) => {
     console.log('更新节点，节点ID:', nodeId)
-    // TODO: 实现更新节点功能
+    
+    if (!user?.userId || !currentSession) {
+      console.error('用户信息或会话信息缺失')
+      return
+    }
+
+    try {
+      // 获取要更新的节点信息
+      const nodeResponse = await conversationAPI.get(nodeId, user.userId, currentSession)
+      
+      if (nodeResponse.code === 200 && nodeResponse.obj) {
+        const nodeData = nodeResponse.obj
+        
+        // 检查是否有子节点
+        const hasChildren = nodeData.LinkedConversationNodesID && nodeData.LinkedConversationNodesID.length > 0
+        
+        if (hasChildren) {
+          // 显示警告对话框
+          setUpdateConfirm({
+            visible: true,
+            nodeId,
+            originalUserMessage: nodeData.UserMessage || '',
+            originalAIMessage: nodeData.AIMessage || '',
+            childCount: nodeData.LinkedConversationNodesID?.length || 0
+          })
+        } else {
+          // 没有子节点，直接进入更新模式
+          openUpdateDialog(nodeId, nodeData.UserMessage || '', nodeData.AIMessage || '')
+        }
+      } else {
+        console.error('获取节点信息失败:', nodeResponse.msg)
+      }
+    } catch (error) {
+      console.error('获取节点信息时发生错误:', error)
+    }
+  }, [user?.userId, currentSession])
+
+  // 打开更新对话框
+  const openUpdateDialog = useCallback((nodeId: string, originalUserMessage: string, aiResponseText: string) => {
+    setNewNodeDialog({
+      visible: true,
+      parentNodeId: '', // 更新模式不需要父节点
+      nodeType: 'followup', // 更新模式使用追问类型（支持上下文选择）
+      aiResponseText,
+      isUpdateMode: true,
+      updateNodeId: nodeId,
+      originalUserMessage,
+      contextStartIdx: 0,
+      contextEndIdx: -1
+    })
+    
+    // 重置文本选择状态
+    setTextSelection(null)
+    // 设置原始用户输入
+    setUserInput(originalUserMessage)
+  }, [])
+
+  // 确认更新节点
+  const handleConfirmUpdate = useCallback(() => {
+    if (!updateConfirm) return
+    
+    const { nodeId, originalUserMessage, originalAIMessage } = updateConfirm
+    openUpdateDialog(nodeId, originalUserMessage, originalAIMessage)
+    setUpdateConfirm(null)
+  }, [updateConfirm, openUpdateDialog])
+
+  // 取消更新
+  const handleCancelUpdate = useCallback(() => {
+    setUpdateConfirm(null)
   }, [])
 
   // 删除确认状态
@@ -1304,6 +1558,93 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       background: ${isDarkMode ? '#dc2626' : '#b91c1c'};
       transform: translateY(-1px);
     }
+
+    /* 更新确认对话框样式 */
+    .update-confirm-dialog {
+      animation: slideInFromTop 0.3s ease-out;
+    }
+
+    @keyframes slideInFromTop {
+      from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* 更新警告样式 */
+    .update-warning-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 12px 0;
+    }
+
+    .update-warning-list li {
+      padding: 4px 0;
+      position: relative;
+      padding-left: 20px;
+    }
+
+    .update-warning-list li:before {
+      content: "⚠️";
+      position: absolute;
+      left: 0;
+      top: 4px;
+    }
+
+    /* 更新按钮特殊效果 */
+    .update-confirm-btn {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .update-confirm-btn:hover {
+      box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+    }
+
+    .update-confirm-btn:before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .update-confirm-btn:hover:before {
+      left: 100%;
+    }
+
+    /* 消息提示动画 */
+    @keyframes slideInRight {
+      from {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    /* 错误状态样式 */
+    .react-flow__node[data-error="true"] {
+      border-color: ${isDarkMode ? '#ef4444' : '#dc2626'} !important;
+      animation: shake 0.5s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
   `, [isDarkMode])
 
   return (
@@ -1568,7 +1909,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="add-node-dialog-title">
-              {newNodeDialog.nodeType === 'question' ? '📝 新建提问' : '💬 新建追问'}
+              {newNodeDialog.isUpdateMode ? (
+                '🔄 重新提问'
+              ) : (
+                newNodeDialog.nodeType === 'question' ? '📝 新建提问' : '💬 新建追问'
+              )}
             </h3>
             
             {/* 追问模式：显示文本选择区域 */}
@@ -1634,9 +1979,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
               value={userInput}
               onChange={(e) => handleUserInputChange(e.target.value)}
               placeholder={
-                newNodeDialog.nodeType === 'question' 
-                  ? '💭 请输入您的问题...\n\n例如："什么是人工智能？"' 
-                  : '🔍 请输入您的追问...\n\n例如："能详细解释一下这个概念吗？"'
+                newNodeDialog.isUpdateMode
+                  ? '🔄 请重新输入您的问题...\n\n注意：更新后原有的回答分支将被删除'
+                  : newNodeDialog.nodeType === 'question' 
+                    ? '💭 请输入您的问题...\n\n例如："什么是人工智能？"' 
+                    : '🔍 请输入您的追问...\n\n例如："能详细解释一下这个概念吗？"'
               }
               autoFocus
             />
@@ -1658,11 +2005,190 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 {isCreatingNode ? (
                   <>
                     <div className="add-node-loading-spinner"></div>
-                    创建中...
+                    {newNodeDialog.isUpdateMode ? '更新中...' : '创建中...'}
                   </>
                 ) : (
                   <>
-                    ✨ 确认创建
+                    {newNodeDialog.isUpdateMode ? '🔄 确认更新' : '✨ 确认创建'}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 更新确认对话框 */}
+      {updateConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+          onClick={handleCancelUpdate}
+        >
+          <div
+            style={{
+              background: isDarkMode ? '#2d3748' : '#ffffff',
+              border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '450px',
+              width: '90%',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.25)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ 
+              margin: '0 0 16px 0', 
+              color: isDarkMode ? '#ffffff' : '#374151',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span>⚠️</span>
+              <span>确认重新提问</span>
+            </h3>
+            
+            <div style={{ 
+              margin: '0 0 20px 0', 
+              color: isDarkMode ? '#d1d5db' : '#6b7280',
+              fontSize: '14px',
+              lineHeight: '1.5'
+            }}>
+              <p style={{ margin: '0 0 12px 0' }}>
+                您确定要重新提问吗？这将会：
+              </p>
+              <ul style={{ 
+                margin: '0 0 12px 0', 
+                paddingLeft: '20px',
+                color: isDarkMode ? '#fbbf24' : '#d97706'
+              }}>
+                <li>删除当前节点的所有子节点（共 {updateConfirm.childCount} 个）</li>
+                <li>重新生成AI回答</li>
+                <li>所有基于原回答的后续对话将丢失</li>
+              </ul>
+              <p style={{ 
+                margin: 0,
+                color: isDarkMode ? '#f87171' : '#dc2626',
+                fontWeight: '500'
+              }}>
+                此操作不可撤销，请谨慎选择！
+              </p>
+            </div>
+
+            {/* 显示原始问题预览 */}
+            <div style={{
+              margin: '0 0 20px 0',
+              padding: '12px',
+              background: isDarkMode ? '#374151' : '#f8fafc',
+              border: `1px solid ${isDarkMode ? '#4b5563' : '#e2e8f0'}`,
+              borderRadius: '6px'
+            }}>
+              <div style={{
+                fontSize: '12px',
+                color: isDarkMode ? '#9ca3af' : '#6b7280',
+                marginBottom: '6px'
+              }}>
+                当前问题：
+              </div>
+              <div style={{
+                fontSize: '13px',
+                color: isDarkMode ? '#ffffff' : '#374151',
+                fontWeight: '500'
+              }}>
+                {updateConfirm.originalUserMessage || '无问题内容'}
+              </div>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              gap: '12px', 
+              justifyContent: 'flex-end' 
+            }}>
+              <button
+                onClick={handleCancelUpdate}
+                disabled={updateConfirm.isUpdating}
+                style={{
+                  padding: '10px 20px',
+                  border: `1px solid ${isDarkMode ? '#6b7280' : '#d1d5db'}`,
+                  borderRadius: '6px',
+                  background: 'transparent',
+                  color: isDarkMode ? '#d1d5db' : '#374151',
+                  cursor: updateConfirm.isUpdating ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s',
+                  opacity: updateConfirm.isUpdating ? 0.6 : 1
+                }}
+                onMouseEnter={(e) => {
+                  if (!updateConfirm.isUpdating) {
+                    e.currentTarget.style.background = isDarkMode ? '#374151' : '#f9fafb'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!updateConfirm.isUpdating) {
+                    e.currentTarget.style.background = 'transparent'
+                  }
+                }}
+              >
+                ✖️ 取消
+              </button>
+              <button
+                onClick={handleConfirmUpdate}
+                disabled={updateConfirm.isUpdating}
+                style={{
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: updateConfirm.isUpdating 
+                    ? '#9ca3af' 
+                    : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  color: '#ffffff',
+                  cursor: updateConfirm.isUpdating ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  if (!updateConfirm.isUpdating) {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #d97706 0%, #b45309 100%)'
+                    e.currentTarget.style.transform = 'translateY(-1px)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!updateConfirm.isUpdating) {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                    e.currentTarget.style.transform = 'translateY(0)'
+                  }
+                }}
+              >
+                {updateConfirm.isUpdating ? (
+                  <>
+                    <div style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid rgba(255, 255, 255, 0.3)',
+                      borderRadius: '50%',
+                      borderTop: '2px solid #ffffff',
+                      animation: 'spin 1s linear infinite'
+                    }}></div>
+                    处理中...
+                  </>
+                ) : (
+                  <>
+                    🔄 确认重新提问
                   </>
                 )}
               </button>

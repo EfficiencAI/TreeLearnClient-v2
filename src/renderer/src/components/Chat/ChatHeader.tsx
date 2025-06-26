@@ -10,13 +10,11 @@ import GitHubPage from '../Pages/GitHubPage'
 interface ChatHeaderProps {
   currentSession?: string
   isConversationMode?: boolean
-  selectedParentInfo?: {id: string, content: string} | null
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = ({ 
   currentSession, 
-  isConversationMode, 
-  selectedParentInfo 
+  isConversationMode
 }) => {
   const { isDarkMode } = useSettings()
   const { logout } = useAuth() // 添加logout函数
