@@ -126,13 +126,6 @@ const AppContent: React.FC = () => {
           selectedParentId={selectedParentId} // 传递选中的父节点ID
         />
       </div>
-      {showNodeTree && (
-        <NodeTreeView
-          sessionName={nodeTreeSession}
-          onClose={() => setShowNodeTree(false)}
-          onNodeSelect={handleNodeSelect} // 传递节点选择回调
-        />
-      )}
     </div>
   )
 }

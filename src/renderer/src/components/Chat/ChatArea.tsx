@@ -1,11 +1,17 @@
-import React, { useState, useCallback } from 'react'
-import { Message } from '../../types'
+import React, { useState, useCallback, useMemo } from 'react'
+import ReactFlow, {
+  Node,
+  Edge,
+  useNodesState,
+  useEdgesState,
+  Controls,
+  Background,
+  Panel,
+  BackgroundVariant,
+} from 'reactflow'
+import 'reactflow/dist/style.css'
 import { useAuth } from '../../hooks/useAuth'
-import { useSettings } from '../../share/share'
-import { conversationAPI } from '../../api/API'
-import MessageContainer from './MessageContainer'
-import ChatInput from './ChatInput'
-import { flushSync } from 'react-dom'
+import { useSettings, themeUtils } from '../../share/share'
 
 interface ChatAreaProps {
   currentSession?: string
@@ -18,196 +24,213 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   isConversationMode = false,
   selectedParentId = ''
 }) => {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const { user } = useAuth()
-  const { settings } = useSettings()
+  const { settings, isDarkMode } = useSettings()
+  
+  // 获取实际应用的主题（处理 auto 模式）
+  const actualTheme = themeUtils.getActualTheme(settings.theme)
 
-  // 简化的流式更新函数 - 移除复杂的节流逻辑
-  const updateStreamingMessage = useCallback((messageId: string, content: string) => {
-    flushSync(() => {
-      setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, content } : msg)))
-    })
-  }, [])
-
-  const handleSendMessage = async (content: string): Promise<void> => {
-    if (!user?.userId || !currentSession || !isConversationMode) {
-      // 非对话模式，使用原有逻辑
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        type: 'user',
-        content: content,
-        timestamp: new Date()
+    // 初始节点数据 - 使用实际主题和 isDarkMode
+  const initialNodes: Node[] = [
+    {
+      id: '1',
+      type: 'input',
+      data: { label: '开始节点' },
+      position: { x: 250, y: 25 },
+      style: { 
+        background: isDarkMode ? '#2a2b2c' : '#ffffff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
       }
-      setMessages((prev) => [...prev, newMessage])
-      return
-    }
-
-    // 添加用户消息
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: content,
-      timestamp: new Date()
-    }
-    setMessages((prev) => [...prev, userMessage])
-
-    // 添加AI消息占位符
-    const aiMessageId = (Date.now() + 1).toString()
-    const aiMessage: Message = {
-      id: aiMessageId,
-      type: 'ai',
-      content: '',
-      timestamp: new Date()
-    }
-    setMessages((prev) => [...prev, aiMessage])
-
-    setIsLoading(true)
-    setStreamingMessageId(aiMessageId)
-
-    try {
-      // 确定父节点ID
-      const parentId = selectedParentId || '-1'
-      console.log('发送消息，父节点ID:', parentId)
-
-      // 调用AI API
-      const response = await fetch('http://localhost:8080/user/conversation/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream'
-        },
-        body: JSON.stringify({
-          userId: user.userId,
-          sessionName: currentSession,
-          conversationNodeId: Date.now().toString(),
-          parentId: parentId,
-          userMessage: content,
-          contextStartIdx: '0',
-          contextEndIdx: '0',
-          message: content,
-          apikey: settings.apiKey,
-          baseurl: settings.baseUrl,
-          modelName: settings.modelName,
-          systemPrompt: settings.systemPrompt,
-          mcpUrls: settings.mcpUrls || []
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP错误! 状态: ${response.status}`)
+    },
+    {
+      id: '2',
+      data: { label: '处理节点' },
+      position: { x: 100, y: 125 },
+      style: { 
+        background: isDarkMode ? '#2a2b2c' : '#ffffff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
       }
-
-      // 处理流式响应
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('无法获取响应流')
+    },
+    {
+      id: '3',
+      type: 'output',
+      data: { label: '结束节点' },
+      position: { x: 400, y: 125 },
+      style: { 
+        background: isDarkMode ? '#2a2b2c' : '#ffffff',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
       }
+    },
+  ]
 
-      console.log('开始流式处理...')
-      let aiContent = ''
-      let buffer = '' // 缓冲区处理不完整的数据
-      let chunkCount = 0
+  const initialEdges: Edge[] = []
 
-      while (true) {
-        const { done, value } = await reader.read()
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-        if (done) {
-          console.log('流式传输结束，总共接收', chunkCount, '个数据块')
-          console.log('最终内容长度:', aiContent.length)
+    // 根据主题动态计算样式 - 使用 isDarkMode
+  const flowStyles = useMemo(() => ({
+    backgroundColor: isDarkMode ? '#1a1b1c' : '#f7fafc',
+    color: isDarkMode ? '#ffffff' : '#000000',
+  }), [isDarkMode])
 
-          // 流式传输结束，最后一次更新
-          updateStreamingMessage(aiMessageId, aiContent)
+  // 背景样式配置
+  const backgroundConfig = useMemo(() => ({
+    variant: 'dots' as BackgroundVariant,
+    gap: 20,
+    size: 1,
+    color: isDarkMode ? '#4a5568' : '#e2e8f0',
+  }), [isDarkMode])
 
-          setStreamingMessageId(null)
-          await fetchAllNodes()
-          setIsLoading(false)
-          break
-        }
-
-        chunkCount++
-        // 解码数据块
-        const chunk = decoder.decode(value, { stream: true })
-        console.log(`接收到第${chunkCount}个数据块:`, chunk)
-        buffer += chunk
-
-        // 按行处理数据
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // 保留最后一行（可能不完整）
-
-        // 修改第141-162行的逻辑
-        for (const line of lines) {
-          console.log('处理行数据:', line)
-        
-          // 处理空行（保留换行）
-          if (line.trim() === '') {
-            aiContent += '\n'
-            updateStreamingMessage(aiMessageId, aiContent)
-            continue
-          }
-        
-          // 移除可能的 "data: " 或 "data:" 前缀
-          let cleanData = line.trim()
-          if (cleanData.startsWith('data: ')) {
-            cleanData = cleanData.substring(6)
-          } else if (cleanData.startsWith('data:')) {
-            cleanData = cleanData.substring(5)
-          }
-        
-          console.log('清理后的数据:', cleanData)
-        
-          // 跳过特殊标记，累加AI内容并解析换行符
-          if (cleanData !== '[DONE]') {
-            // 将 \\n 字符串转换为实际换行符
-            const processedData = cleanData.replace(/\\n/g, '\n')
-            aiContent += processedData
-            console.log('累积内容长度:', aiContent.length, '最新片段:', processedData)
-        
-            // 直接更新
-            updateStreamingMessage(aiMessageId, aiContent)
-          }
-        }
-      }
-    } catch (error) {
-      console.error('发送消息失败:', error)
-
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === aiMessageId ? { ...msg, content: '抱歉，AI回复失败，请重试。' } : msg
-        )
-      )
-      setStreamingMessageId(null)
-      setIsLoading(false)
-    }
-  }
-
-  // 获取所有节点（对话结束后调用）
-  const fetchAllNodes = async (): Promise<void> => {
-    if (!user?.userId || !currentSession) return
-
-    try {
-      const response = await conversationAPI.getAllIds(user.userId, currentSession)
-      if (response.code === 200 && response.obj) {
-        console.log('当前会话的所有节点:', response.obj)
-      }
-    } catch (error) {
-      console.error('获取节点失败:', error)
-    }
-  }
+  // 控件样式
+  const controlsStyle = useMemo(() => ({
+    background: isDarkMode ? '#2a2b2c' : '#ffffff',
+    border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
+    borderRadius: '8px',
+  }), [isDarkMode])
 
   return (
-    <div className="chat-area">
-      {isConversationMode && currentSession && (
-        <div className="conversation-header">
+    <div className="chat-area" style={{ height: '100vh', width: '100%' }}>
+      {/* 头部信息面板 */}
+            {isConversationMode && currentSession && (
+        <div 
+          className="conversation-header"
+          style={{
+            background: isDarkMode ? '#2a2b2c' : '#ffffff',
+            color: isDarkMode ? '#ffffff' : '#000000',
+            borderBottom: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
+            padding: '12px 16px',
+            fontSize: '14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
           <span>对话模式 - {currentSession}</span>
-          {selectedParentId && <span className="parent-node-info">父节点: {selectedParentId}</span>}
+          {selectedParentId && (
+            <span 
+              className="parent-node-info"
+              style={{
+                background: isDarkMode ? '#4a5568' : '#e2e8f0',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                fontSize: '12px',
+              }}
+            >
+              父节点: {selectedParentId}
+            </span>
+          )}
         </div>
       )}
-      <MessageContainer messages={messages} streamingMessageId={streamingMessageId} />
-      <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
+
+      {/* React Flow 主界面 */}
+      <div style={{ 
+        height: isConversationMode && currentSession ? 'calc(100vh - 60px)' : '100vh',
+        ...flowStyles 
+      }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          fitView
+          attributionPosition="bottom-left"
+        >
+          {/* 控制面板 */}
+          <Controls 
+            style={controlsStyle}
+            showZoom={true}
+            showFitView={true}
+            showInteractive={true}
+          />
+
+          {/* 背景 */}
+          <Background {...backgroundConfig} />
+
+          {/* 信息面板 */}
+          <Panel 
+            position="top-right"
+            style={{
+              background: isDarkMode ? '#2a2b2c' : '#ffffff',
+              border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '8px',
+              padding: '12px',
+              color: isDarkMode ? '#ffffff' : '#000000',
+              fontSize: '12px',
+            }}
+          >
+            <div>
+              <div><strong>用户:</strong> {user?.username || '未登录'}</div>
+              <div><strong>主题:</strong> {settings.theme} ({actualTheme})</div>
+              <div><strong>模型:</strong> {settings.defaultModel}</div>
+              <div><strong>节点数:</strong> {nodes.length}</div>
+              <div><strong>连接数:</strong> {edges.length}</div>
+            </div>
+          </Panel>
+
+
+          {/* 空状态提示 */}
+          {nodes.length === 0 && (
+            <Panel 
+              position="center"
+              style={{
+                background: settings.theme === 'dark' ? '#2a2b2c' : '#ffffff',
+                border: `1px solid ${settings.theme === 'dark' ? '#4a5568' : '#e2e8f0'}`,
+                borderRadius: '8px',
+                padding: '24px',
+                color: settings.theme === 'dark' ? '#a0aec0' : '#718096',
+                textAlign: 'center',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: '0 0 8px 0' }}>欢迎使用流程图模式</h3>
+                <p style={{ margin: 0, fontSize: '14px' }}>
+                  当前没有节点，开始创建您的第一个流程图吧！
+                </p>
+              </div>
+            </Panel>
+          )}
+        </ReactFlow>
+      </div>
+
+      {/* 自定义样式 */}
+      <style jsx>{`
+        .chat-area {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .react-flow__node {
+          font-size: 12px;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          transition: all 0.2s ease;
+        }
+        
+        .react-flow__node:hover {
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .react-flow__node.selected {
+          box-shadow: 0 0 0 2px ${isDarkMode ? '#6366f1' : '#4f46e5'};
+        }
+        
+        .react-flow__controls {
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .react-flow__controls-button {
+          background: ${isDarkMode ? '#374151' : '#f9fafb'};
+          border: 1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'};
+          color: ${isDarkMode ? '#ffffff' : '#374151'};
+        }
+        
+        .react-flow__controls-button:hover {
+          background: ${isDarkMode ? '#4b5563' : '#f3f4f6'};
+        }
+      `}</style>
     </div>
   )
 }

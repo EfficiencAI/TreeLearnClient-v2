@@ -1,0 +1,48 @@
+/* React Flow 主题样式 */
+.reactflow-wrapper {
+  height: 100%;
+  width: 100%;
+}
+
+/* 深色主题下的节点样式 */
+.dark .react-flow__node {
+  background: #2a2b2c;
+  border: 1px solid #4a5568;
+  color: #ffffff;
+}
+
+.dark .react-flow__node-input {
+  background: #1e3a8a;
+  border-color: #3b82f6;
+}
+
+.dark .react-flow__node-output {
+  background: #166534;
+  border-color: #22c55e;
+}
+
+/* 浅色主题下的节点样式 */
+.light .react-flow__node {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #000000;
+}
+
+.light .react-flow__node-input {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.light .react-flow__node-output {
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+
+/* 连接线样式 */
+.dark .react-flow__edge-path {
+  stroke: #6b7280;
+}
+
+.light .react-flow__edge-path {
+  stroke: #9ca3af;
+}
