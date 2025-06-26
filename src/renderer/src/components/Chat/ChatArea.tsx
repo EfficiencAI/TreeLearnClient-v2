@@ -695,15 +695,19 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   // 文本选择组件
   const TextSelectionArea = useCallback(({ 
     text, 
-    onTextSelect 
+    onTextSelect,
+    canSelect: canSelect
   }: { 
     text: string
     onTextSelect: (selectedText: string, startIdx: number, endIdx: number) => void 
+    canSelect: boolean
   }) => {
     const textRef = useRef<HTMLDivElement>(null)
     
     const handleMouseUp = useCallback(() => {
       if (!textRef.current) return
+
+      if (!canSelect) return
       
       const selection = window.getSelection()
       if (!selection || selection.rangeCount === 0) return
@@ -737,9 +741,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           maxHeight: '200px',
           overflowY: 'auto',
           userSelect: 'text',
-          cursor: 'text',
+          cursor: canSelect ? 'text' : 'not-allowed',
           whiteSpace: 'pre-wrap',
-          wordWrap: 'break-word'
+          wordWrap: 'break-word',
+          msUserSelect: canSelect ? 'text' : 'none',
+          opacity: canSelect ? 1 : 0.6,
         }}
       >
         {text || '暂无AI回答内容'}
@@ -1055,7 +1061,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const openUpdateDialog = useCallback((nodeId: string, originalUserMessage: string, aiResponseText: string) => {
     setNewNodeDialog({
       visible: true,
-      parentNodeId: '', // 更新模式不需要父节点
+      parentNodeId: nodeId.length == 1 ? '-1' : nodeId.substring(0, nodeId.length - 1),
       nodeType: 'followup', // 更新模式使用追问类型（支持上下文选择）
       aiResponseText,
       isUpdateMode: true,
@@ -2013,10 +2019,10 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 </div>
                 
                 <TextSelectionArea 
-                  text={newNodeDialog.aiResponseText || ''}
+                  text={newNodeDialog.parentNodeId == "-1" ? '暂无上下文' : newNodeDialog.aiResponseText || ''}
                   onTextSelect={handleTextSelection}
+                  canSelect={newNodeDialog.parentNodeId != "-1"}
                 />
-                
                 {/* 显示选择信息 */}
                 {textSelection && (
                   <div className="selection-info-card">
