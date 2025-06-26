@@ -155,6 +155,37 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   const [isLoadingNodes, setIsLoadingNodes] = useState(false)
   const [loadedNodeIds, setLoadedNodeIds] = useState<Set<string>>(new Set())
 
+  // 格式化节点显示内容
+  const formatNodeContent = useCallback((userMessage?: string, aiMessage?: string): string => {
+    const maxLength = 60 // 每部分最大显示长度
+    
+    let content = ''
+    
+    // 添加用户问题
+    if (userMessage) {
+      const truncatedUser = userMessage.length > maxLength 
+        ? userMessage.substring(0, maxLength) + '...' 
+        : userMessage
+      content += `👤 ${truncatedUser}`
+    }
+    
+    // 添加AI回答
+    if (aiMessage) {
+      const truncatedAI = aiMessage.length > maxLength 
+        ? aiMessage.substring(0, maxLength) + '...' 
+        : aiMessage
+      if (content) content += '\n\n'
+      content += `🤖 ${truncatedAI}`
+    }
+    
+    // 如果都没有，显示默认内容
+    if (!content) {
+      content = '📝 对话节点'
+    }
+    
+    return content
+  }, [])
+
   // 递归获取对话节点 - 修复版本
   const fetchNodesRecursively = useCallback(async (
     parentNodeId: string, 
@@ -207,11 +238,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       const newNodes: Node[] = []
       const newEdges: Edge[] = []
       
-      // 计算子节点位置
-      const nodeSpacing = Math.max(300, 200 + level * 50) // 根据层级调整间距
-      const levelSpacing = 150
+      // 计算子节点位置 - 优化版本
+      const nodeSpacing = Math.max(380, 280 + level * 60) // 增加间距适应更大节点
+      const levelSpacing = 180 // 增加垂直间距
       const startX = parentPosition.x - (linkedNodesId.length - 1) * nodeSpacing / 2
-      
+
       // 串行处理节点（避免并发问题）
       for (let i = 0; i < linkedNodesId.length; i++) {
         const nodeId = linkedNodesId[i]
@@ -226,14 +257,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
               y: parentPosition.y + levelSpacing * (level + 1)
             }
 
-            // 创建节点
+            console.log('nodeData', nodeData)
+
+            // 创建节点 - 修改显示内容
             const newNode: Node<NodeData> = {
               id: nodeId,
               type: 'default',
               data: {
-                label: (nodeData.userMessage || nodeData.message || `节点 ${nodeId}`).substring(0, 30) + '...',
-                userMessage: nodeData.userMessage,
-                message: nodeData.message,
+                label: formatNodeContent(nodeData.UserMessage, nodeData.AIMessage),
+                userMessage: nodeData.UserMessage,
+                message: nodeData.AIMessage,
                 parentId: parentNodeId,
                 isConversationNode: true,
                 LinkedConversationNodesID: nodeData.LinkedConversationNodesID || []
@@ -244,9 +277,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 color: isDarkMode ? '#ffffff' : '#000000',
                 border: `1px solid ${isDarkMode ? '#6b7280' : '#d1d5db'}`,
                 borderRadius: '8px',
-                padding: '10px',
-                minWidth: '200px',
-                maxWidth: '250px'
+                padding: '12px',
+                minWidth: '280px',
+                maxWidth: '350px',
+                fontSize: '12px',
+                lineHeight: '1.4'
               }
             }
 
@@ -327,6 +362,19 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [isConversationMode, currentSession, user?.userId, fetchNodesRecursively, setNodes, setEdges])
 
+  // 节点鼠标事件处理
+  const onNodeMouseEnter: NodeMouseHandler = useCallback((event, node) => {
+    if (node.data.isConversationNode) {
+      // 可以在这里添加 tooltip 显示完整内容
+      console.log('完整用户消息:', node.data.userMessage)
+      console.log('完整AI回答:', node.data.message)
+    }
+  }, [])
+
+  const onNodeMouseLeave: NodeMouseHandler = useCallback((event, node) => {
+    // 隐藏 tooltip
+  }, [])
+
   // 监听会话变化，动态更新会话节点并加载对话节点
   useEffect(() => {
     if (isConversationMode && currentSession) {
@@ -363,17 +411,21 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }), [])
 
-  // 动态生成CSS字符串
+  // 动态生成CSS字符串 - 更新版本
   const dynamicStyles = useMemo(() => `
     .react-flow__node {
       font-size: 12px;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       transition: all 0.2s ease;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      text-align: left;
     }
     
     .react-flow__node:hover {
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      transform: translateY(-1px);
     }
     
     .react-flow__node.selected {
@@ -383,6 +435,26 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     .react-flow__node[data-id="session-node"] {
       box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
       animation: pulse 2s infinite;
+      text-align: center;
+    }
+    
+    .react-flow__node-default {
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    
+    /* 滚动条样式 */
+    .react-flow__node-default::-webkit-scrollbar {
+      width: 4px;
+    }
+    
+    .react-flow__node-default::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    .react-flow__node-default::-webkit-scrollbar-thumb {
+      background: ${isDarkMode ? '#6b7280' : '#d1d5db'};
+      border-radius: 2px;
     }
     
     @keyframes pulse {
@@ -405,6 +477,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       background: ${isDarkMode ? '#4b5563' : '#f3f4f6'};
     }
   `, [isDarkMode])
+
 
   return (
     <div className="chat-area" style={{ height: '100vh', width: '100%' }}>
@@ -450,6 +523,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           edges={edges}
           onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeMouseEnter={onNodeMouseEnter}
+          onNodeMouseLeave={onNodeMouseLeave}
           fitView
           attributionPosition="bottom-left"
           onNodesDelete={(nodesToDelete) => {
