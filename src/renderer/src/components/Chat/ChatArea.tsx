@@ -27,6 +27,7 @@ import {
   ConversationNodeData, 
   SessionData 
 } from '../../api/API'
+import NodeContextMenu from './NodeContextMenu'
 
 
 interface ChatAreaProps {
@@ -132,31 +133,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     
     onNodesChange(filteredChanges)
   }, [onNodesChange])
-
-    // 监听会话变化，动态更新会话节点
-  useEffect(() => {
-    if (isConversationMode && currentSession) {
-      const sessionNode = createSessionNode(currentSession)
-      
-      setNodes(prevNodes => {
-        // 检查是否已存在会话节点
-        const hasSessionNode = prevNodes.some(node => node.id === 'session-node')
-        
-        if (!hasSessionNode) {
-          // 添加会话节点到开头
-          return [sessionNode, ...prevNodes]
-        } else {
-          // 更新现有会话节点
-          return prevNodes.map(node => 
-            node.id === 'session-node' ? sessionNode : node
-          )
-        }
-      })
-    } else {
-      // 非会话模式时移除会话节点
-      setNodes(prevNodes => prevNodes.filter(node => node.id !== 'session-node'))
-    }
-  }, [isConversationMode, currentSession, createSessionNode, setNodes])
 
   // 在现有状态后添加新的状态
   const [isLoadingNodes, setIsLoadingNodes] = useState(false)
@@ -413,6 +389,53 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [hoveredNode])
 
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean
+    x: number
+    y: number
+    nodeId: string
+    nodeType: 'session' | 'conversation'
+  } | null>(null)
+
+  // 右键菜单事件处理
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: any) => {
+    event.preventDefault()
+    event.stopPropagation()
+    
+    const nodeType = node.id === 'session-node' ? 'session' : 'conversation'
+    
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: node.id,
+      nodeType
+    })
+    
+    // 隐藏tooltip
+    setHoveredNode(null)
+  }, [])
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+
+  // 菜单操作处理函数（暂时只是日志输出）
+  const handleAddNode = useCallback((nodeId: string) => {
+    console.log('添加节点，父节点ID:', nodeId)
+    // TODO: 实现添加节点功能
+  }, [])
+
+  const handleUpdateNode = useCallback((nodeId: string) => {
+    console.log('更新节点，节点ID:', nodeId)
+    // TODO: 实现更新节点功能
+  }, [])
+
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    console.log('删除节点，节点ID:', nodeId)
+    // TODO: 实现删除节点功能
+  }, [])
 
   // 监听会话变化，动态更新会话节点并加载对话节点
   useEffect(() => {
@@ -443,6 +466,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       setEdges([])
     }
   }, [isConversationMode, currentSession, createSessionNode, setNodes, setEdges, loadSessionNodes])
+
+  // 全局点击事件处理，关闭右键菜单
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setContextMenu(null)
+    }
+
+    if (contextMenu) {
+      document.addEventListener('click', handleGlobalClick)
+      return () => document.removeEventListener('click', handleGlobalClick)
+    }
+  }, [contextMenu])
 
   const customStyles = useMemo(() => ({
     chatArea: {
@@ -584,6 +619,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseLeave={onNodeMouseLeave}
           onNodeMouseMove={onNodeMouseMove}
+          onNodeContextMenu={onNodeContextMenu}
           fitView
           attributionPosition="bottom-left"
           onNodesDelete={(nodesToDelete) => {
@@ -668,6 +704,21 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           position={tooltipPosition}
           isDarkMode={isDarkMode}
           onClose={() => setHoveredNode(null)}
+        />
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          nodeType={contextMenu.nodeType}
+          nodeId={contextMenu.nodeId}
+          isDarkMode={isDarkMode}
+          onClose={handleCloseContextMenu}
+          onAddNode={handleAddNode}
+          onUpdateNode={handleUpdateNode}
+          onDeleteNode={contextMenu.nodeType === 'conversation' ? handleDeleteNode : undefined}
         />
       )}
 
