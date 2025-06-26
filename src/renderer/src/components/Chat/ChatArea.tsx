@@ -700,13 +700,24 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       
       // 生成新节点ID
       const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+      // 修正父节点ID
+      let actualParentId: string | number
+      if (parentNodeId === 'session-node') {
+        // 会话节点作为父节点时使用 -1
+        actualParentId = -1
+      } else {
+        // 对话节点作为父节点时使用其 conversationNodeId
+        const parentNode = nodes.find(node => node.id === parentNodeId)
+        actualParentId = parentNode?.id || parentNodeId
+      }
       
       // 准备请求参数
       const requestParams = {
         userId: user.userId,
         sessionName: currentSession,
         conversationNodeId: newNodeId,
-        parentId: parentNodeId,
+        parentId: actualParentId,
         userMessage: userInput.trim(),
         // 根据节点类型设置上下文参数
         contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
