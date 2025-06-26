@@ -432,9 +432,117 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     // TODO: 实现更新节点功能
   }, [])
 
-  const handleDeleteNode = useCallback((nodeId: string) => {
-    console.log('删除节点，节点ID:', nodeId)
-    // TODO: 实现删除节点功能
+  // 删除确认状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    visible: boolean
+    nodeId: string
+    nodeName: string
+    isDeleting?: boolean
+  } | null>(null)
+
+  // 递归获取所有子节点ID（包括子节点的子节点）
+  const getAllChildNodeIds = useCallback((nodeId: string, allNodes: Node[]): string[] => {
+    const childIds: string[] = []
+    
+    // 找到当前节点
+    const currentNode = allNodes.find(node => node.id === nodeId)
+    if (!currentNode?.data?.LinkedConversationNodesID) {
+      return childIds
+    }
+    
+    // 获取直接子节点
+    const directChildren = currentNode.data.LinkedConversationNodesID || []
+    
+    // 递归获取所有子节点
+    for (const childId of directChildren) {
+      childIds.push(childId)
+      // 递归获取子节点的子节点
+      const grandChildren = getAllChildNodeIds(childId, allNodes)
+      childIds.push(...grandChildren)
+    }
+    
+    return childIds
+  }, [])
+
+  // 从边数据中获取子节点ID（作为备用方案）
+  const getChildNodeIdsFromEdges = useCallback((nodeId: string, allEdges: Edge[]): string[] => {
+    const childIds: string[] = []
+    
+    // 找到以当前节点为源的所有边
+    const directChildren = allEdges
+      .filter(edge => edge.source === nodeId)
+      .map(edge => edge.target)
+    
+    // 递归获取所有子节点
+    for (const childId of directChildren) {
+      childIds.push(childId)
+      // 递归获取子节点的子节点
+      const grandChildren = getChildNodeIdsFromEdges(childId, allEdges)
+      childIds.push(...grandChildren)
+    }
+    
+    return childIds
+  }, [])
+
+  // 删除节点处理函数（带确认和子节点统计）
+  const handleDeleteNode = useCallback(async (nodeId: string) => {
+    // 获取节点信息用于确认对话框
+    const nodeToDelete = nodes.find(node => node.id === nodeId)
+    const nodeName = nodeToDelete?.data?.label || nodeId
+    
+    // 计算子节点数量
+    let childCount = 0
+    try {
+      const allChildIds = getAllChildNodeIds(nodeId, nodes)
+      childCount = allChildIds.length
+    } catch (error) {
+      // 使用边数据作为备用方案
+      const allChildIds = getChildNodeIdsFromEdges(nodeId, edges)
+      childCount = allChildIds.length
+    }
+    
+    // 显示确认对话框
+    setDeleteConfirm({
+      visible: true,
+      nodeId,
+      nodeName: childCount > 0 ? `${nodeName} (包含 ${childCount} 个子节点)` : nodeName
+    })
+  }, [nodes, edges, getAllChildNodeIds, getChildNodeIdsFromEdges])
+
+  // 确认删除节点
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteConfirm || !user?.userId || !currentSession) {
+      console.error('删除确认信息或用户信息缺失')
+      return
+    }
+
+    setDeleteConfirm(prev => prev ? { ...prev, isDeleting: true } : null)
+
+    const { nodeId } = deleteConfirm
+
+    try {
+      // 发送删除请求
+      const response = await conversationAPI.delete(nodeId, user.userId, currentSession)
+      
+      if (response.code === 200) {
+        console.log('节点删除成功:', response.obj)
+        
+        // 简化逻辑：重新加载所有节点数据
+        await loadSessionNodes()
+        
+      } else {
+        console.error('删除节点失败:', response.msg)
+      }
+    } catch (error) {
+      console.error('删除节点时发生错误:', error)
+    } finally {
+      setDeleteConfirm(null)
+    }
+  }, [deleteConfirm, user?.userId, currentSession, loadSessionNodes])
+
+  // 取消删除
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirm(null)
   }, [])
 
   // 监听会话变化，动态更新会话节点并加载对话节点
@@ -720,6 +828,107 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           onUpdateNode={handleUpdateNode}
           onDeleteNode={contextMenu.nodeType === 'conversation' ? handleDeleteNode : undefined}
         />
+      )}
+
+      {/* 删除确认对话框 */}
+      {deleteConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+          onClick={handleCancelDelete}
+        >
+          <div
+            style={{
+              background: isDarkMode ? '#2d3748' : '#ffffff',
+              border: `1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.25)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ 
+              margin: '0 0 16px 0', 
+              color: isDarkMode ? '#ffffff' : '#374151',
+              fontSize: '18px',
+              fontWeight: 'bold'
+            }}>
+              确认删除节点
+            </h3>
+            <p style={{ 
+              margin: '0 0 24px 0', 
+              color: isDarkMode ? '#d1d5db' : '#6b7280',
+              fontSize: '14px',
+              lineHeight: '1.5'
+            }}>
+              您确定要删除节点 "{deleteConfirm.nodeName}" 吗？
+              <br />
+              <span style={{ color: isDarkMode ? '#f87171' : '#dc2626' }}>
+                此操作不可撤销，将永久删除该节点及其所有子节点。
+              </span>
+            </p>
+            <div style={{ 
+              display: 'flex', 
+              gap: '12px', 
+              justifyContent: 'flex-end' 
+            }}>
+              <button
+                onClick={handleCancelDelete}
+                style={{
+                  padding: '8px 16px',
+                  border: `1px solid ${isDarkMode ? '#6b7280' : '#d1d5db'}`,
+                  borderRadius: '6px',
+                  background: 'transparent',
+                  color: isDarkMode ? '#d1d5db' : '#374151',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDarkMode ? '#374151' : '#f9fafb'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#b91c1c'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#dc2626'
+                }}
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style dangerouslySetInnerHTML={{ __html: dynamicStyles }} />
