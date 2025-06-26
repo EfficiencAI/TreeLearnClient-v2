@@ -429,6 +429,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     selectedText?: string
     contextStartIdx?: number
     contextEndIdx?: number
+    // 新增：AI回答的完整文本
+    aiResponseText?: string
+  } | null>(null)
+
+  // 文本选择相关状态
+  const [textSelection, setTextSelection] = useState<{
+    selectedText: string
+    startIdx: number
+    endIdx: number
   } | null>(null)
 
   const [isCreatingNode, setIsCreatingNode] = useState(false)
@@ -568,19 +577,114 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     // 判断节点类型
     const nodeType = nodeId === 'session-node' ? 'question' : 'followup'
     
+    // 获取父节点的AI回答文本（用于追问模式）
+    let aiResponseText = ''
+    if (nodeType === 'followup') {
+      const parentNode = nodes.find(node => node.id === nodeId)
+      aiResponseText = parentNode?.data?.message || ''
+    }
+    
     setNewNodeDialog({
       visible: true,
       parentNodeId: nodeId,
       nodeType,
       contextStartIdx: nodeType === 'question' ? undefined : 0,
-      contextEndIdx: nodeType === 'question' ? undefined : -1
+      contextEndIdx: nodeType === 'question' ? undefined : -1,
+      aiResponseText
     })
-  }, [])
+    
+    // 重置文本选择状态
+    setTextSelection(null)
+  }, [nodes])
 
   // 处理用户输入变化
   const handleUserInputChange = useCallback((value: string) => {
     setUserInput(value)
   }, [])
+
+  // 处理文本选择
+  const handleTextSelection = useCallback((selectedText: string, startIdx: number, endIdx: number) => {
+    setTextSelection({
+      selectedText,
+      startIdx,
+      endIdx
+    })
+    
+    // 同时更新对话框状态
+    setNewNodeDialog(prev => prev ? {
+      ...prev,
+      selectedText,
+      contextStartIdx: startIdx,
+      contextEndIdx: endIdx
+    } : null)
+  }, [])
+
+  // 重置文本选择
+  const handleResetSelection = useCallback(() => {
+    setTextSelection(null)
+    setNewNodeDialog(prev => prev ? {
+      ...prev,
+      selectedText: '',
+      contextStartIdx: 0,
+      contextEndIdx: -1
+    } : null)
+  }, [])
+
+  // 文本选择组件
+  const TextSelectionArea = useCallback(({ 
+    text, 
+    onTextSelect 
+  }: { 
+    text: string
+    onTextSelect: (selectedText: string, startIdx: number, endIdx: number) => void 
+  }) => {
+    const textRef = useRef<HTMLDivElement>(null)
+    
+    const handleMouseUp = useCallback(() => {
+      if (!textRef.current) return
+      
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString().trim()
+      
+      if (!selectedText) return
+      
+      // 计算选中文本在原文中的位置
+      const containerText = textRef.current.textContent || ''
+      const startIdx = containerText.indexOf(selectedText)
+      const endIdx = startIdx + selectedText.length - 1
+      
+      if (startIdx >= 0) {
+        onTextSelect(selectedText, startIdx, endIdx)
+      }
+    }, [onTextSelect])
+    
+    return (
+      <div
+        ref={textRef}
+        className="text-selection-area"
+        onMouseUp={handleMouseUp}
+        style={{
+          padding: '16px',
+          background: isDarkMode ? '#1f2937' : '#f8fafc',
+          border: `1px solid ${isDarkMode ? '#374151' : '#e2e8f0'}`,
+          borderRadius: '8px',
+          fontSize: '14px',
+          lineHeight: '1.6',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          userSelect: 'text',
+          cursor: 'text',
+          whiteSpace: 'pre-wrap',
+          wordWrap: 'break-word'
+        }}
+      >
+        {text || '暂无AI回答内容'}
+      </div>
+    )
+  }, [isDarkMode])
 
   // 确认创建新节点
   const handleConfirmAddNode = useCallback(async () => {
@@ -1117,6 +1221,78 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     /* 流式响应光标效果 */
     .streaming-cursor {
       animation: blink 1s infinite;
+
+    /* 文本选择区域样式 */
+    .text-selection-area {
+      transition: all 0.2s ease;
+    }
+
+    .text-selection-area:hover {
+      border-color: ${isDarkMode ? '#6366f1' : '#4f46e5'} !important;
+    }
+
+    .text-selection-area::selection {
+      background: ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(79, 70, 229, 0.2)'};
+    }
+
+    .text-selection-area::-moz-selection {
+      background: ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(79, 70, 229, 0.2)'};
+    }
+
+    /* 选中文本高亮提示 */
+    .selection-highlight {
+      background: ${isDarkMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)'};
+      border-radius: 3px;
+      padding: 2px 4px;
+      margin: 0 2px;
+      border: 1px solid ${isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.2)'};
+    }
+
+    .selection-info-card {
+      background: ${isDarkMode ? '#0f172a' : '#f1f5f9'};
+      border: 1px solid ${isDarkMode ? '#334155' : '#cbd5e1'};
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0;
+    }
+
+    .selection-info-title {
+      color: ${isDarkMode ? '#22c55e' : '#16a34a'};
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .selection-info-content {
+      color: ${isDarkMode ? '#e2e8f0' : '#475569'};
+      font-size: 12px;
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      background: ${isDarkMode ? '#1e293b' : '#ffffff'};
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid ${isDarkMode ? '#475569' : '#e2e8f0'};
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    .selection-reset-btn {
+      background: ${isDarkMode ? '#ef4444' : '#dc2626'};
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .selection-reset-btn:hover {
+      background: ${isDarkMode ? '#dc2626' : '#b91c1c'};
+      transform: translateY(-1px);
+    }
   `, [isDarkMode])
 
   return (
@@ -1384,16 +1560,60 @@ const ChatArea: React.FC<ChatAreaProps> = ({
               {newNodeDialog.nodeType === 'question' ? '📝 新建提问' : '💬 新建追问'}
             </h3>
             
-            {/* 显示上下文信息（仅追问模式） */}
+            {/* 追问模式：显示文本选择区域 */}
             {newNodeDialog.nodeType === 'followup' && (
-              <div className="add-node-context-info">
-                <div className="add-node-context-label">
-                  🎯 上下文范围配置
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ 
+                  marginBottom: '12px', 
+                  color: isDarkMode ? '#d1d5db' : '#6b7280',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}>
+                  🎯 请选择要追问的AI回答内容：
                 </div>
-                <div className="add-node-context-value">
-                  起始位置: {newNodeDialog.contextStartIdx} | 结束位置: {newNodeDialog.contextEndIdx}
-                  {newNodeDialog.contextEndIdx === -1 && ' (整个AI回答)'}
-                </div>
+                
+                <TextSelectionArea 
+                  text={newNodeDialog.aiResponseText || ''}
+                  onTextSelect={handleTextSelection}
+                />
+                
+                {/* 显示选择信息 */}
+                {textSelection && (
+                  <div className="selection-info-card">
+                    <div className="selection-info-title">
+                      ✅ 已选择内容 
+                      <button 
+                        className="selection-reset-btn"
+                        onClick={handleResetSelection}
+                        title="重置选择"
+                      >
+                        重置
+                      </button>
+                    </div>
+                    <div className="selection-info-content">
+                      "{textSelection.selectedText}"
+                      <br />
+                      <span style={{ opacity: 0.7 }}>
+                        范围: {textSelection.startIdx} - {textSelection.endIdx}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* 未选择提示 */}
+                {!textSelection && (
+                  <div style={{
+                    margin: '12px 0',
+                    padding: '8px 12px',
+                    background: isDarkMode ? 'rgba(251, 191, 36, 0.1)' : 'rgba(251, 191, 36, 0.1)',
+                    border: `1px solid ${isDarkMode ? 'rgba(251, 191, 36, 0.3)' : 'rgba(251, 191, 36, 0.3)'}`,
+                    borderRadius: '6px',
+                    color: isDarkMode ? '#fbbf24' : '#d97706',
+                    fontSize: '13px'
+                  }}>
+                    💡 请用鼠标选择上方文本中要追问的部分，未选择时将使用整个回答作为上下文
+                  </div>
+                )}
               </div>
             )}
 
