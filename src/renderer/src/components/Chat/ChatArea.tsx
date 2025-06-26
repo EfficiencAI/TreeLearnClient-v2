@@ -811,6 +811,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           userId: user.userId,
           sessionName: currentSession,
           conversationNodeId: updateNodeId,
+          registrationCertificate: '',
           parentId: '', // 更新时不需要修改父节点关系
           userMessage: userInput.trim(),
           contextStartIdx: String(contextStartIdx || 0),
@@ -904,12 +905,14 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
         conversationAPI.register(user.userId, currentSession, actualParentId).then((response: any) => {
           if(response.code === 200){
-            const newNodeId = response.obj
+            const newNodeId = response.obj.conversationNodeId
+            const nodeRegistrationCertificate = response.obj.registrationCertificate
             
             const requestParams = {
               userId: user.userId,
               sessionName: currentSession,
               conversationNodeId: newNodeId,
+              registrationCertificate: nodeRegistrationCertificate,
               parentId: actualParentId,
               userMessage: userInput.trim(),
               contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),

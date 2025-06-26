@@ -29,7 +29,7 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-  mainWindow.webContents.openDevTools() // uncomment this line to open devtools
+  // mainWindow.webContents.openDevTools() // uncomment this line to open devtools
 }
 
 app.whenReady().then(() => {

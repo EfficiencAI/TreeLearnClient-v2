@@ -35,6 +35,7 @@ export interface ConversationRequestParams {
   userId: string
   sessionName: string
   conversationNodeId: string
+  registrationCertificate: string
   parentId: string
   userMessage: string
   contextStartIdx: string
@@ -56,7 +57,11 @@ export interface ConversationNodeData {
   parentId?: string
   // 其他可能的属性
 }
-
+// 对话节点注册结果接口
+export interface ConversationNodeRegistrationResult {
+  conversationNodeId?: string
+  registrationCertificate: string
+}
 // 会话数据接口  
 export interface SessionData {
   LinkedConversationNodesID?: string[]
@@ -259,7 +264,7 @@ class ApiClient {
     userId: string, 
     sessionName: string, 
     parentId: string
-  ): Promise<ApiResponse<string>> {
+  ): Promise<ApiResponse<ConversationNodeRegistrationResult>> {
     return this.get('/user/conversation/registerForNewConversationNode', {
       userId,
       sessionName,
@@ -329,7 +334,7 @@ export const sessionAPI = {
 }
 
 export const conversationAPI = {
-  register: (userId: string, sessionName: string, parentId: string) => apiClient.registerForNewConversationNode(userId, sessionName, parentId),
+  register: (userId: string, sessionName: string, parentId: string): Promise<ApiResponse<ConversationNodeRegistrationResult>> => apiClient.registerForNewConversationNode(userId, sessionName, parentId),
   add: (params: ConversationRequestParams) => apiClient.addConversationNode(params),
   update: (params: ConversationRequestParams) => apiClient.updateConversationNode(params),
   delete: (conversationNodeId: string, userId: string, sessionName: string) =>
