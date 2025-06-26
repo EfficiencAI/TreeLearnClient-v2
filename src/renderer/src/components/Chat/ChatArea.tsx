@@ -41,6 +41,7 @@ export interface NodeData {
   label: string
   userMessage?: string
   message?: string
+  nodeId: string
   parentId?: string
   selectedContext?: string
   isConversationNode?: boolean
@@ -249,6 +250,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 label: formatNodeContent(nodeData.UserMessage, nodeData.AIMessage),
                 userMessage: nodeData.UserMessage,
                 message: nodeData.AIMessage,
+                nodeId: nodeId,
                 parentId: parentNodeId,
                 isConversationNode: true,
                 LinkedConversationNodesID: nodeData.LinkedConversationNodesID || []
@@ -370,12 +372,67 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [])
 
+  // 在现有状态后添加固定 tooltip 相关状态
+  const [isMouseOverTooltip, setIsMouseOverTooltip] = useState(false)
+
+  // 在现有状态后添加固定 tooltip 状态
+  const [pinnedTooltip, setPinnedTooltip] = useState<{
+    id: string
+    position: { x: number; y: number }
+    data: NodeData
+  } | null>(null)
+
+  // 改进的鼠标离开处理
   const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
-    // 延迟隐藏，允许鼠标移到tooltip上
-    setTimeout(() => {
-      setHoveredNode(null)
-    }, 100)
+    if (!pinnedTooltip) {
+      setTimeout(() => {
+        // 检查鼠标是否在tooltip区域或者tooltip被固定
+        if (!isMouseOverTooltip && !pinnedTooltip) {
+          setHoveredNode(null)
+        }
+      }, 200)
+    }
+  }, [pinnedTooltip, isMouseOverTooltip])
+
+  // 添加固定/取消固定处理函数
+  const handlePinTooltip = useCallback(() => {
+    if (hoveredNode) {
+      if (pinnedTooltip && pinnedTooltip.id === hoveredNode.id) {
+        // 取消固定
+        setPinnedTooltip(null)
+      } else {
+        // 固定当前tooltip
+        setPinnedTooltip(hoveredNode)
+        setHoveredNode(null) // 清除悬停状态
+      }
+    }
+  }, [hoveredNode, pinnedTooltip])
+
+  const handleCloseTooltip = useCallback(() => {
+    setHoveredNode(null)
+    setPinnedTooltip(null)
   }, [])
+
+  // 添加节点点击事件处理
+  const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
+    if (node.data.isConversationNode || node.data.isSessionNode) {
+      // 点击节点时固定tooltip
+      const nodeTooltipData = {
+        id: node.id,
+        position: { x: event.clientX, y: event.clientY },
+        data: node.data
+      }
+      
+      if (pinnedTooltip && pinnedTooltip.id === node.id) {
+        // 如果点击的是已固定的节点，则取消固定
+        setPinnedTooltip(null)
+      } else {
+        // 固定新的tooltip
+        setPinnedTooltip(nodeTooltipData)
+        setHoveredNode(null) // 清除悬停状态
+      }
+    }
+  }, [pinnedTooltip])
 
   // 鼠标移动时更新tooltip位置
   const onNodeMouseMove: NodeMouseHandler = useCallback((event, node) => {
@@ -554,6 +611,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         label: `👤 ${userMessage}\n\n🤖 正在思考中...`,
         userMessage,
         message: '',
+        nodeId: nodeId,
         parentId,
         isConversationNode: true,
         isLoading: true
@@ -1638,6 +1696,22 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       25% { transform: translateX(-5px); }
       75% { transform: translateX(5px); }
     }
+
+    /* 固定tooltip特殊样式 */
+    .pinned-tooltip {
+      animation: pinIn 0.3s ease-out;
+    }
+
+    @keyframes pinIn {
+      from {
+        transform: scale(0.95);
+        opacity: 0.8;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
   `, [isDarkMode])
 
   return (
@@ -1688,6 +1762,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           onNodeMouseLeave={onNodeMouseLeave}
           onNodeMouseMove={onNodeMouseMove}
           onNodeContextMenu={onNodeContextMenu}
+          onNodeClick={onNodeClick}
           fitView
           attributionPosition="bottom-left"
           onNodesDelete={(nodesToDelete) => {
@@ -1765,13 +1840,29 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         </ReactFlow>
       </div>
 
-      {/* 节点悬停提示 */}
-      {hoveredNode && (
+      {/* 悬停提示 */}
+      {/* 更新NodeTooltip渲染，传递鼠标状态控制函数 */}
+      {hoveredNode && !pinnedTooltip && (
         <NodeTooltip
           data={hoveredNode.data}
           position={tooltipPosition}
           isDarkMode={isDarkMode}
           onClose={() => setHoveredNode(null)}
+          onPin={handlePinTooltip}
+          onMouseEnter={() => setIsMouseOverTooltip(true)}
+          onMouseLeave={() => setIsMouseOverTooltip(false)}
+        />
+      )}
+
+      {/* 固定提示 */}
+      {pinnedTooltip && (
+        <NodeTooltip
+          data={pinnedTooltip.data}
+          position={pinnedTooltip.position}
+          isDarkMode={isDarkMode}
+          onClose={handleCloseTooltip}
+          isPinned={true}
+          onPin={handlePinTooltip}
         />
       )}
 
