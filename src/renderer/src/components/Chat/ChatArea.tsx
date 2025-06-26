@@ -421,10 +421,239 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     setContextMenu(null)
   }, [])
 
-  // 菜单操作处理函数（暂时只是日志输出）
+  // 节点相关状态
+  const [newNodeDialog, setNewNodeDialog] = useState<{
+    visible: boolean
+    parentNodeId: string
+    nodeType: 'question' | 'followup'
+    selectedText?: string
+    contextStartIdx?: number
+    contextEndIdx?: number
+  } | null>(null)
+
+  const [isCreatingNode, setIsCreatingNode] = useState(false)
+  const [userInput, setUserInput] = useState('')
+
+  // 处理流式响应
+  const handleStreamResponse = useCallback(async (stream: ReadableStream<Uint8Array>, nodeId: string, userMessage: string) => {
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let aiResponse = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          break
+        }
+
+        // 解码流数据
+        const chunk = decoder.decode(value, { stream: true })
+        aiResponse += chunk
+
+        // 实时更新节点内容
+        setNodes(prevNodes => 
+          prevNodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: formatNodeContent(userMessage, aiResponse + '▌'), // 添加光标效果
+                  message: aiResponse,
+                  isLoading: true
+                }
+              }
+            }
+            return node
+          })
+        )
+      }
+
+      // 流式响应完成，更新最终状态
+      setNodes(prevNodes => 
+        prevNodes.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                label: formatNodeContent(userMessage, aiResponse),
+                message: aiResponse,
+                isLoading: false
+              },
+              style: {
+                ...node.style,
+                border: `1px solid ${isDarkMode ? '#6b7280' : '#d1d5db'}`,
+                animation: 'none'
+              }
+            }
+          }
+          return node
+        })
+      )
+
+      // 添加连接边
+      const newEdge: Edge = {
+        id: `edge_${newNodeDialog?.parentNodeId}_${nodeId}`,
+        source: newNodeDialog?.parentNodeId || '',
+        target: nodeId,
+        style: { 
+          stroke: isDarkMode ? '#6b7280' : '#9ca3af',
+          strokeWidth: 2
+        },
+        animated: false
+      }
+
+      setEdges(prevEdges => [...prevEdges, newEdge])
+
+      console.log('节点创建完成:', nodeId)
+
+    } catch (error) {
+      console.error('处理流式响应失败:', error)
+      throw error
+    } finally {
+      reader.releaseLock()
+    }
+  }, [setNodes, setEdges, formatNodeContent, isDarkMode, newNodeDialog])
+
+  // 创建临时加载节点
+  const createTemporaryNode = useCallback((nodeId: string, parentId: string, userMessage: string): Node<NodeData> => {
+    // 计算新节点位置
+    const parentNode = nodes.find(node => node.id === parentId)
+    const parentPosition = parentNode?.position || { x: 250, y: 25 }
+    
+    // 计算子节点数量以确定位置
+    const siblingCount = nodes.filter(node => 
+      edges.some(edge => edge.source === parentId && edge.target === node.id)
+    ).length
+    
+    const position = {
+      x: parentPosition.x + (siblingCount * 300),
+      y: parentPosition.y + 200
+    }
+
+    return {
+      id: nodeId,
+      type: 'default',
+      data: {
+        label: `👤 ${userMessage}\n\n🤖 正在思考中...`,
+        userMessage,
+        message: '',
+        parentId,
+        isConversationNode: true,
+        isLoading: true
+      },
+      position,
+      style: {
+        background: isDarkMode ? '#374151' : '#f9fafb',
+        color: isDarkMode ? '#ffffff' : '#000000',
+        border: `2px solid ${isDarkMode ? '#6366f1' : '#4f46e5'}`,
+        borderRadius: '8px',
+        padding: '12px',
+        minWidth: '280px',
+        maxWidth: '350px',
+        fontSize: '12px',
+        lineHeight: '1.4',
+        animation: 'pulse 1.5s infinite'
+      }
+    }
+  }, [nodes, edges, isDarkMode])
+
+  // 处理新增节点请求
   const handleAddNode = useCallback((nodeId: string) => {
-    console.log('添加节点，父节点ID:', nodeId)
-    // TODO: 实现添加节点功能
+    console.log('准备添加节点，父节点ID:', nodeId)
+    
+    // 判断节点类型
+    const nodeType = nodeId === 'session-node' ? 'question' : 'followup'
+    
+    setNewNodeDialog({
+      visible: true,
+      parentNodeId: nodeId,
+      nodeType,
+      contextStartIdx: nodeType === 'question' ? undefined : 0,
+      contextEndIdx: nodeType === 'question' ? undefined : -1
+    })
+  }, [])
+
+  // 处理用户输入变化
+  const handleUserInputChange = useCallback((value: string) => {
+    setUserInput(value)
+  }, [])
+
+  // 确认创建新节点
+  const handleConfirmAddNode = useCallback(async () => {
+    if (!newNodeDialog || !user?.userId || !currentSession || !userInput.trim()) {
+      console.error('创建节点信息不完整')
+      return
+    }
+
+    setIsCreatingNode(true)
+
+    try {
+      const { parentNodeId, nodeType, contextStartIdx, contextEndIdx } = newNodeDialog
+      
+      // 生成新节点ID
+      const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      
+      // 准备请求参数
+      const requestParams = {
+        userId: user.userId,
+        sessionName: currentSession,
+        conversationNodeId: newNodeId,
+        parentId: parentNodeId,
+        userMessage: userInput.trim(),
+        // 根据节点类型设置上下文参数
+        contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
+        contextEndIdx: nodeType === 'question' ? '' : String(contextEndIdx || -1),
+        message: userInput.trim(),
+        // 使用用户设置中的配置
+        apikey: settings.apiKey || '',
+        baseurl: settings.baseUrl || '',
+        modelName: settings.modelName || settings.defaultModel,
+        systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
+        mcpUrls: [] // 根据需要配置
+      }
+
+      console.log(`创建${nodeType === 'question' ? '提问' : '追问'}节点:`, {
+        nodeId: newNodeId,
+        parentId: parentNodeId,
+        userMessage: userInput.trim(),
+        contextRange: nodeType === 'followup' ? `${contextStartIdx}-${contextEndIdx}` : 'N/A'
+      })
+
+      // 先在UI中创建一个临时的加载节点
+      const tempNode = createTemporaryNode(newNodeId, parentNodeId, userInput.trim())
+      setNodes(prevNodes => [...prevNodes, tempNode])
+
+      console.log('发送请求参数:', requestParams)
+
+      // 发送流式请求
+      const stream = await conversationAPI.add(requestParams)
+      
+      if (stream) {
+        // 处理流式响应
+        await handleStreamResponse(stream, newNodeId, userInput.trim())
+      } else {
+        throw new Error('未能获取到流式响应')
+      }
+
+    } catch (error) {
+      console.error('创建节点失败:', error)
+      // 移除失败的临时节点
+      setNodes(prevNodes => prevNodes.filter(node => !node.data.isLoading))
+    } finally {
+      setIsCreatingNode(false)
+      setNewNodeDialog(null)
+      setUserInput('')
+    }
+  }, [newNodeDialog, user?.userId, currentSession, userInput, settings, setNodes])
+
+  // 取消创建节点
+  const handleCancelAddNode = useCallback(() => {
+    setNewNodeDialog(null)
+    setUserInput('')
   }, [])
 
   const handleUpdateNode = useCallback((nodeId: string) => {
@@ -677,8 +906,218 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     .tooltip-content::-webkit-scrollbar-thumb:hover {
       background: ${isDarkMode ? '#9ca3af' : '#9ca3af'};
     }
-  `, [isDarkMode])
 
+    /* 新增节点对话框样式 */
+    .add-node-dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .add-node-dialog-content {
+      background: ${isDarkMode ? '#2d3748' : '#ffffff'};
+      border: 1px solid ${isDarkMode ? '#4a5568' : '#e2e8f0'};
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .add-node-dialog-title {
+      margin: 0 0 20px 0;
+      color: ${isDarkMode ? '#ffffff' : '#374151'};
+      font-size: 20px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .add-node-context-info {
+      margin: 0 0 20px 0;
+      padding: 16px;
+      background: ${isDarkMode ? '#374151' : '#f8fafc'};
+      border: 1px solid ${isDarkMode ? '#4b5563' : '#e2e8f0'};
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .add-node-context-label {
+      color: ${isDarkMode ? '#d1d5db' : '#6b7280'};
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .add-node-context-value {
+      color: ${isDarkMode ? '#ffffff' : '#374151'};
+      font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+      background: ${isDarkMode ? '#1f2937' : '#ffffff'};
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid ${isDarkMode ? '#6b7280' : '#d1d5db'};
+    }
+
+    .add-node-textarea {
+      width: calc(100% - 24px);
+      height: 120px;
+      padding: 12px;
+      border: 2px solid ${isDarkMode ? '#4a5568' : '#d1d5db'};
+      border-radius: 8px;
+      background: ${isDarkMode ? '#374151' : '#ffffff'};
+      color: ${isDarkMode ? '#ffffff' : '#374151'};
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      resize: vertical;
+      outline: none;
+      transition: all 0.2s ease;
+      line-height: 1.5;
+    }
+
+    .add-node-textarea:focus {
+      border-color: ${isDarkMode ? '#6366f1' : '#4f46e5'};
+      box-shadow: 0 0 0 3px ${isDarkMode ? 'rgba(99, 102, 241, 0.1)' : 'rgba(79, 70, 229, 0.1)'};
+    }
+
+    .add-node-textarea::placeholder {
+      color: ${isDarkMode ? '#9ca3af' : '#6b7280'};
+    }
+
+    .add-node-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+
+    .add-node-button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .add-node-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .add-node-button-cancel {
+      border: 2px solid ${isDarkMode ? '#6b7280' : '#d1d5db'};
+      background: transparent;
+      color: ${isDarkMode ? '#d1d5db' : '#374151'};
+    }
+
+    .add-node-button-cancel:hover:not(:disabled) {
+      background: ${isDarkMode ? '#374151' : '#f9fafb'};
+      border-color: ${isDarkMode ? '#9ca3af' : '#9ca3af'};
+      transform: translateY(-1px);
+    }
+
+    .add-node-button-confirm {
+      border: none;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .add-node-button-confirm:hover:not(:disabled) {
+      background: linear-gradient(135deg, #5b5bd6 0%, #7c3aed 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+    }
+
+    .add-node-button-confirm:disabled {
+      background: #9ca3af;
+      box-shadow: none;
+    }
+
+    .add-node-loading-spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    /* 动画效果 */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+      from { 
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+      }
+      to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+      .add-node-dialog-content {
+        margin: 20px;
+        width: calc(100% - 40px);
+        max-width: none;
+      }
+      
+      .add-node-buttons {
+        flex-direction: column;
+      }
+      
+      .add-node-button {
+        width: 100%;
+      }
+    }
+
+    /* 加载节点动画样式 */
+    .react-flow__node[data-loading="true"] {
+      animation: nodeLoading 1.5s ease-in-out infinite;
+      border-color: ${isDarkMode ? '#6366f1' : '#4f46e5'} !important;
+    }
+
+    @keyframes nodeLoading {
+      0%, 100% { 
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6);
+        transform: scale(1.02);
+      }
+    }
+
+    /* 流式响应光标效果 */
+    .streaming-cursor {
+      animation: blink 1s infinite;
+  `, [isDarkMode])
 
   return (
     <div className="chat-area" style={{ height: '100vh', width: '100%' }}>
@@ -765,7 +1204,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
             <div>
               <div><strong>用户:</strong> {user?.username || '未登录'}</div>
               <div><strong>主题:</strong> {settings.theme} ({actualTheme})</div>
-              <div><strong>模型:</strong> {settings.defaultModel}</div>
+              <div><strong>模型:</strong> {settings.modelName}</div>
               <div><strong>节点数:</strong> {nodes.length}</div>
               <div><strong>连接数:</strong> {edges.length}</div>
               {isLoadingNodes && (
@@ -925,6 +1364,76 @@ const ChatArea: React.FC<ChatAreaProps> = ({
                 }}
               >
                 确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新增节点对话框 */}
+      {newNodeDialog && (
+        <div
+          className="add-node-dialog-overlay"
+          onClick={handleCancelAddNode}
+        >
+          <div
+            className="add-node-dialog-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="add-node-dialog-title">
+              {newNodeDialog.nodeType === 'question' ? '📝 新建提问' : '💬 新建追问'}
+            </h3>
+            
+            {/* 显示上下文信息（仅追问模式） */}
+            {newNodeDialog.nodeType === 'followup' && (
+              <div className="add-node-context-info">
+                <div className="add-node-context-label">
+                  🎯 上下文范围配置
+                </div>
+                <div className="add-node-context-value">
+                  起始位置: {newNodeDialog.contextStartIdx} | 结束位置: {newNodeDialog.contextEndIdx}
+                  {newNodeDialog.contextEndIdx === -1 && ' (整个AI回答)'}
+                </div>
+              </div>
+            )}
+
+            {/* 输入框 */}
+            <textarea
+              className="add-node-textarea"
+              value={userInput}
+              onChange={(e) => handleUserInputChange(e.target.value)}
+              placeholder={
+                newNodeDialog.nodeType === 'question' 
+                  ? '💭 请输入您的问题...\n\n例如："什么是人工智能？"' 
+                  : '🔍 请输入您的追问...\n\n例如："能详细解释一下这个概念吗？"'
+              }
+              autoFocus
+            />
+
+            {/* 按钮组 */}
+            <div className="add-node-buttons">
+              <button
+                className="add-node-button add-node-button-cancel"
+                onClick={handleCancelAddNode}
+                disabled={isCreatingNode}
+              >
+                ✖️ 取消
+              </button>
+              <button
+                className="add-node-button add-node-button-confirm"
+                onClick={handleConfirmAddNode}
+                disabled={isCreatingNode || !userInput.trim()}
+              >
+                {isCreatingNode ? (
+                  <>
+                    <div className="add-node-loading-spinner"></div>
+                    创建中...
+                  </>
+                ) : (
+                  <>
+                    ✨ 确认创建
+                  </>
+                )}
               </button>
             </div>
           </div>
