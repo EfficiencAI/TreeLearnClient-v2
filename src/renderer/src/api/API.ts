@@ -47,6 +47,24 @@ export interface ConversationRequestParams {
   mcpUrls: string[]
   [key: string]: unknown // 添加索引签名
 }
+// 对话节点数据接口
+export interface ConversationNodeData {
+  UserMessage?: string
+  AIMessage?: string
+  LinkedConversationNodesID?: string[]
+  conversationNodeId?: string
+  parentId?: string
+  // 其他可能的属性
+}
+
+// 会话数据接口  
+export interface SessionData {
+  LinkedConversationNodesID?: string[]
+  sessionId?: string
+  sessionName?: string
+  userId?: string
+  // 其他可能的属性
+}
 
 // API基础配置
 const API_BASE_URL = 'http://localhost:8080' // 根据实际情况修改
@@ -208,7 +226,7 @@ class ApiClient {
   }
 
   // 获取会话
-  async getSession(userId: string, sessionName: string): Promise<ApiResponse> {
+  async getSession(userId: string, sessionName: string): Promise<ApiResponse<SessionData>> {
     return this.get('/user/session/get', { userId, sessionName })
   }
 
@@ -265,7 +283,7 @@ class ApiClient {
     conversationNodeId: string,
     userId: string,
     sessionName: string
-  ): Promise<ApiResponse> {
+  ): Promise<ApiResponse<ConversationNodeData>> {
     return this.get(`/user/conversation/get/${conversationNodeId}`, { userId, sessionName })
   }
 
@@ -291,7 +309,8 @@ export const userAPI = {
 
 export const sessionAPI = {
   create: (params: CreateSessionParams) => apiClient.createSession(params),
-  get: (userId: string, sessionName: string) => apiClient.getSession(userId, sessionName),
+  get: (userId: string, sessionName: string): Promise<ApiResponse<SessionData>> => 
+    apiClient.getSession(userId, sessionName),
   getAllNames: (userId: string) => apiClient.getAllSessionsName(userId),
   update: (params: UpdateSessionParams) => apiClient.updateSession(params),
   delete: (userId: string, sessionName: string) => apiClient.deleteSession(userId, sessionName)
@@ -302,7 +321,7 @@ export const conversationAPI = {
   update: (params: ConversationRequestParams) => apiClient.updateConversationNode(params),
   delete: (conversationNodeId: string, userId: string, sessionName: string) =>
     apiClient.deleteConversationNode(conversationNodeId, userId, sessionName),
-  get: (conversationNodeId: string, userId: string, sessionName: string) =>
+  get: (conversationNodeId: string, userId: string, sessionName: string): Promise<ApiResponse<ConversationNodeData>> =>
     apiClient.getConversationNode(conversationNodeId, userId, sessionName),
   getAllIds: (userId: string, sessionName: string) =>
     apiClient.getAllConversationNodesId(userId, sessionName)

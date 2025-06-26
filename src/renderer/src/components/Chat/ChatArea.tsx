@@ -19,13 +19,34 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { useAuth } from '../../hooks/useAuth'
 import { useSettings, themeUtils } from '../../share/share'
-import ContextMenu from '../Menu/ContextMenu'
-import { sessionAPI, conversationAPI } from '../../api/API'
+import NodeTooltip from './Tooltip/NodeTooltip'
+import { 
+  sessionAPI, 
+  conversationAPI, 
+  ApiResponse, 
+  ConversationNodeData, 
+  SessionData 
+} from '../../api/API'
+
 
 interface ChatAreaProps {
   currentSession?: string
   isConversationMode?: boolean
   selectedParentId?: string
+}
+
+// 节点数据接口
+export interface NodeData {
+  label: string
+  userMessage?: string
+  message?: string
+  parentId?: string
+  selectedContext?: string
+  isConversationNode?: boolean
+  isSessionNode?: boolean
+  sessionId?: string
+  LinkedConversationNodesID?: string[]
+  isLoading?: boolean
 }
 
 const ChatArea: React.FC<ChatAreaProps> = ({
@@ -137,20 +158,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [isConversationMode, currentSession, createSessionNode, setNodes])
 
-  // 节点数据接口
-  interface NodeData {
-    label: string
-    userMessage?: string
-    message?: string
-    parentId?: string
-    selectedContext?: string
-    isConversationNode?: boolean
-    isSessionNode?: boolean
-    sessionId?: string
-    LinkedConversationNodesID?: string[]
-    isLoading?: boolean
-  }
-
   // 在现有状态后添加新的状态
   const [isLoadingNodes, setIsLoadingNodes] = useState(false)
   const [loadedNodeIds, setLoadedNodeIds] = useState<Set<string>>(new Set())
@@ -217,12 +224,12 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       
       // 根据节点类型获取子节点ID列表
       if (parentNodeId === 'session-node') {
-        const sessionResponse = await sessionAPI.get(user.userId, currentSession)
+        const sessionResponse: ApiResponse<SessionData> = await sessionAPI.get(user.userId, currentSession)
         if (sessionResponse.code === 200 && sessionResponse.obj?.LinkedConversationNodesID) {
           linkedNodesId = sessionResponse.obj.LinkedConversationNodesID || []
         }
       } else {
-        const nodeResponse = await conversationAPI.get(parentNodeId, user.userId, currentSession)
+        const nodeResponse: ApiResponse<ConversationNodeData> = await conversationAPI.get(parentNodeId, user.userId, currentSession)
         if (nodeResponse.code === 200 && nodeResponse.obj?.LinkedConversationNodesID) {
           linkedNodesId = nodeResponse.obj.LinkedConversationNodesID || []
         }
@@ -248,7 +255,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         const nodeId = linkedNodesId[i]
         
         try {
-          const nodeResponse = await conversationAPI.get(nodeId, user.userId, currentSession)
+          const nodeResponse: ApiResponse<ConversationNodeData> = await conversationAPI.get(nodeId, user.userId, currentSession)
           
           if (nodeResponse.code === 200 && nodeResponse.obj) {
             const nodeData = nodeResponse.obj
@@ -362,18 +369,50 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [isConversationMode, currentSession, user?.userId, fetchNodesRecursively, setNodes, setEdges])
 
-  // 节点鼠标事件处理
+  // 悬停提示状态
+  const [hoveredNode, setHoveredNode] = useState<{
+    id: string
+    position: { x: number; y: number }
+    data: NodeData
+  } | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
+
+
+  // 节点鼠标事件处理 - 增强版本
   const onNodeMouseEnter: NodeMouseHandler = useCallback((event, node) => {
-    if (node.data.isConversationNode) {
-      // 可以在这里添加 tooltip 显示完整内容
-      console.log('完整用户消息:', node.data.userMessage)
-      console.log('完整AI回答:', node.data.message)
+    if (node.data.isConversationNode || node.data.isSessionNode) {
+      const rect = (event.target as HTMLElement).getBoundingClientRect()
+      
+      setHoveredNode({
+        id: node.id,
+        position: { x: event.clientX, y: event.clientY },
+        data: node.data
+      })
+      
+      setTooltipPosition({ 
+        x: event.clientX, 
+        y: event.clientY 
+      })
     }
   }, [])
 
   const onNodeMouseLeave: NodeMouseHandler = useCallback((event, node) => {
-    // 隐藏 tooltip
+    // 延迟隐藏，允许鼠标移到tooltip上
+    setTimeout(() => {
+      setHoveredNode(null)
+    }, 100)
   }, [])
+
+  // 鼠标移动时更新tooltip位置
+  const onNodeMouseMove: NodeMouseHandler = useCallback((event, node) => {
+    if (hoveredNode && hoveredNode.id === node.id) {
+      setTooltipPosition({ 
+        x: event.clientX, 
+        y: event.clientY 
+      })
+    }
+  }, [hoveredNode])
+
 
   // 监听会话变化，动态更新会话节点并加载对话节点
   useEffect(() => {
@@ -476,6 +515,25 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     .react-flow__controls-button:hover {
       background: ${isDarkMode ? '#4b5563' : '#f3f4f6'};
     }
+
+    /* Tooltip 滚动条样式 */
+    .tooltip-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .tooltip-content::-webkit-scrollbar-track {
+      background: ${isDarkMode ? '#374151' : '#f3f4f6'};
+      border-radius: 3px;
+    }
+
+    .tooltip-content::-webkit-scrollbar-thumb {
+      background: ${isDarkMode ? '#6b7280' : '#d1d5db'};
+      border-radius: 3px;
+    }
+
+    .tooltip-content::-webkit-scrollbar-thumb:hover {
+      background: ${isDarkMode ? '#9ca3af' : '#9ca3af'};
+    }
   `, [isDarkMode])
 
 
@@ -525,6 +583,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           onEdgesChange={onEdgesChange}
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseLeave={onNodeMouseLeave}
+          onNodeMouseMove={onNodeMouseMove}
           fitView
           attributionPosition="bottom-left"
           onNodesDelete={(nodesToDelete) => {
@@ -601,6 +660,16 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           )}
         </ReactFlow>
       </div>
+
+      {/* 节点悬停提示 */}
+      {hoveredNode && (
+        <NodeTooltip
+          data={hoveredNode.data}
+          position={tooltipPosition}
+          isDarkMode={isDarkMode}
+          onClose={() => setHoveredNode(null)}
+        />
+      )}
 
       <style dangerouslySetInnerHTML={{ __html: dynamicStyles }} />
 

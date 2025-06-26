@@ -8,7 +8,7 @@ import ChatArea from './components/Chat/ChatArea'
 import LoginPage from './components/Pages/LoginPage'
 import RegisterPage from './components/Pages/RegisterPage'
 import './assets/ChatPage.css'
-import { conversationAPI } from '@renderer/api/API'
+import { conversationAPI, sessionAPI } from '@renderer/api/API'
 
 const AppContent: React.FC = () => {
   const { user, isLoading, isAuthenticated, login } = useAuth()
