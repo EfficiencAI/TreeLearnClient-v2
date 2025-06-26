@@ -902,7 +902,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           actualParentId = parentNode?.id || parentNodeId
         }
 
-        conversationAPI.registry(user.userId, currentSession, actualParentId).then((response: any) => {
+        conversationAPI.register(user.userId, currentSession, actualParentId).then((response: any) => {
           if(response.code === 200){
             const newNodeId = response.obj
             
