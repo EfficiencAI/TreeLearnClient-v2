@@ -136,7 +136,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
   // 在现有状态后添加新的状态
   const [isLoadingNodes, setIsLoadingNodes] = useState(false)
-  const [loadedNodeIds, setLoadedNodeIds] = useState<Set<string>>(new Set())
 
   // 格式化节点显示内容
   const formatNodeContent = useCallback((userMessage?: string, aiMessage?: string): string => {
@@ -357,8 +356,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   // 节点鼠标事件处理 - 增强版本
   const onNodeMouseEnter: NodeMouseHandler = useCallback((event, node) => {
     if (node.data.isConversationNode || node.data.isSessionNode) {
-      const rect = (event.target as HTMLElement).getBoundingClientRect()
-      
+
       setHoveredNode({
         id: node.id,
         position: { x: event.clientX, y: event.clientY },
@@ -372,7 +370,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     }
   }, [])
 
-  const onNodeMouseLeave: NodeMouseHandler = useCallback((event, node) => {
+  const onNodeMouseLeave: NodeMouseHandler = useCallback(() => {
     // 延迟隐藏，允许鼠标移到tooltip上
     setTimeout(() => {
       setHoveredNode(null)
@@ -652,7 +650,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       const selection = window.getSelection()
       if (!selection || selection.rangeCount === 0) return
       
-      const range = selection.getRangeAt(0)
       const selectedText = selection.toString().trim()
       
       if (!selectedText) return
@@ -835,7 +832,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
 
         let actualParentId: string | number
         if (parentNodeId === 'session-node') {
-          actualParentId = -1
+          actualParentId = '-1'
         } else {
           const parentNode = nodes.find(node => node.id === parentNodeId)
           actualParentId = parentNode?.id || parentNodeId
@@ -1183,13 +1180,9 @@ const ChatArea: React.FC<ChatAreaProps> = ({
       document.addEventListener('click', handleGlobalClick)
       return () => document.removeEventListener('click', handleGlobalClick)
     }
-  }, [contextMenu])
 
-  const customStyles = useMemo(() => ({
-    chatArea: {
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    }
-  }), [])
+    return undefined
+  }, [contextMenu])
 
   // 动态生成CSS字符串 - 更新版本
   const dynamicStyles = useMemo(() => `
