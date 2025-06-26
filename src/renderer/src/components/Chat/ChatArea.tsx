@@ -95,7 +95,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   return (
     <div className="chat-area" style={{ height: '100vh', width: '100%' }}>
       {/* 头部信息面板 */}
-            {isConversationMode && currentSession && (
+        {isConversationMode && currentSession && (
         <div 
           className="conversation-header"
           style={{

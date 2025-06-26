@@ -5,7 +5,7 @@ import SidebarFooter from './SidebarFooter'
 
 interface SidebarProps {
   activeChat: number
-  onChatSelect: (chatId: number) => void
+  onChatSelect: (chatId: number, sessionName: string) => void
   onSessionAction: (action: 'addConversation' | 'viewNodes', sessionName: string) => void // 新增
 }
 

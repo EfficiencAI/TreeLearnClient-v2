@@ -26,8 +26,10 @@ const AppContent: React.FC = () => {
   } | null>(null) // 新增：存储选中父节点的完整信息
 
   // 处理会话选择
-  const handleChatSelect = (chatId: number): void => {
+  const handleChatSelect = (chatId: number, sessionName: string): void => {
     setActiveChat(chatId)
+    setCurrentSession(sessionName)
+    setIsConversationMode(true)
   }
 
   // 处理会话操作
@@ -58,9 +60,10 @@ const AppContent: React.FC = () => {
       try {
         const response = await conversationAPI.get(parentId, user.userId, nodeTreeSession)
         if (response.code === 200 && response.obj) {
+          const obj = response.obj as { userMessage?: string; message?: string }
           setSelectedParentInfo({
             id: parentId,
-            content: response.obj.userMessage || response.obj.message || `节点 ${parentId}`
+            content: obj.userMessage || obj.message || `节点 ${parentId}`
           })
         }
       } catch (error) {

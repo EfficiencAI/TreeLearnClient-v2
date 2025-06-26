@@ -10,7 +10,7 @@ interface Session {
 
 interface ChatHistoryProps {
   activeChat: number
-  onChatSelect: (chatId: number) => void
+  onChatSelect: (chatId: number, sessionName: string) => void
   onSessionAction: (action: 'addConversation' | 'viewNodes', sessionName: string) => void // 新增
 }
 
@@ -123,7 +123,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
             key={session.sessionName}
             session={session}
             isActive={activeChat === index}
-            onClick={() => onChatSelect(index)}
+            onClick={() => onChatSelect(index, session.sessionName)}
             onDelete={() => handleDeleteSession(session.sessionName)}
             onUpdate={(newName) => handleUpdateSession(session.sessionName, newName)}
             onAddConversation={handleAddConversation} // 新增
