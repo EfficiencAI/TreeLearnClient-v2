@@ -255,6 +255,18 @@ class ApiClient {
 
   // ==================== 对话节点管理接口 ====================
 
+  async registryForNewConversationNode(
+    userId: string, 
+    sessionName: string, 
+    parentId: string
+  ): Promise<ApiResponse<string>> {
+    return this.get('/user/conversation/registryForNewConversationNode', {
+      userId,
+      sessionName,
+      parentId
+    })
+  }
+
   // 添加对话节点（流式响应）
   async addConversationNode(
     params: ConversationRequestParams
@@ -317,6 +329,7 @@ export const sessionAPI = {
 }
 
 export const conversationAPI = {
+  registry: (userId: string, sessionName: string, parentId: string) => apiClient.registryForNewConversationNode(userId, sessionName, parentId),
   add: (params: ConversationRequestParams) => apiClient.addConversationNode(params),
   update: (params: ConversationRequestParams) => apiClient.updateConversationNode(params),
   delete: (conversationNodeId: string, userId: string, sessionName: string) =>

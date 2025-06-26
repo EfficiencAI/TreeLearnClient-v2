@@ -25,7 +25,8 @@ import {
   conversationAPI, 
   ApiResponse, 
   ConversationNodeData, 
-  SessionData 
+  SessionData, 
+  ConversationRequestParams
 } from '../../api/API'
 import NodeContextMenu from './NodeContextMenu'
 
@@ -892,7 +893,6 @@ const ChatArea: React.FC<ChatAreaProps> = ({
         
       } else {
         // 原有的新增逻辑保持不变
-        const newNodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
         let actualParentId: string | number
         if (parentNodeId === 'session-node') {
@@ -901,42 +901,43 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           const parentNode = nodes.find(node => node.id === parentNodeId)
           actualParentId = parentNode?.id || parentNodeId
         }
-        
-        const requestParams = {
-          userId: user.userId,
-          sessionName: currentSession,
-          conversationNodeId: newNodeId,
-          parentId: actualParentId,
-          userMessage: userInput.trim(),
-          contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
-          contextEndIdx: nodeType === 'question' ? '' : String(contextEndIdx || -1),
-          message: userInput.trim(),
-          apikey: settings.apiKey || '',
-          baseurl: settings.baseUrl || '',
-          modelName: settings.modelName || settings.defaultModel,
-          systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
-          mcpUrls: []
-        }
 
-        console.log(`创建${nodeType === 'question' ? '提问' : '追问'}节点:`, {
-          nodeId: newNodeId,
-          parentId: parentNodeId,
-          userMessage: userInput.trim(),
-          contextRange: nodeType === 'followup' ? `${contextStartIdx}-${contextEndIdx}` : 'N/A'
+        conversationAPI.registry(user.userId, currentSession, actualParentId).then((response: any) => {
+          if(response.code === 200){
+            const newNodeId = response.obj
+            
+            const requestParams = {
+              userId: user.userId,
+              sessionName: currentSession,
+              conversationNodeId: newNodeId,
+              parentId: actualParentId,
+              userMessage: userInput.trim(),
+              contextStartIdx: nodeType === 'question' ? '' : String(contextStartIdx || 0),
+              contextEndIdx: nodeType === 'question' ? '' : String(contextEndIdx || -1),
+              message: userInput.trim(),
+              apikey: settings.apiKey || '',
+              baseurl: settings.baseUrl || '',
+              modelName: settings.modelName || settings.defaultModel,
+              systemPrompt: settings.systemPrompt || '你是一个有用的AI助手',
+              mcpUrls: []
+            }
+
+            console.log(`创建${nodeType === 'question' ? '提问' : '追问'}节点:`, {
+              nodeId: newNodeId,
+              parentId: parentNodeId,
+              userMessage: userInput.trim(),
+              contextRange: nodeType === 'followup' ? `${contextStartIdx}-${contextEndIdx}` : 'N/A'
+            })
+
+            const tempNode = createTemporaryNode(newNodeId, parentNodeId, userInput.trim())
+            setNodes(prevNodes => [...prevNodes, tempNode])
+
+            console.log('发送请求参数:', requestParams)
+
+            handleAddNodeStream(requestParams, newNodeId)
+          }
+          
         })
-
-        const tempNode = createTemporaryNode(newNodeId, parentNodeId, userInput.trim())
-        setNodes(prevNodes => [...prevNodes, tempNode])
-
-        console.log('发送请求参数:', requestParams)
-
-        const stream = await conversationAPI.add(requestParams)
-        
-        if (stream) {
-          await handleStreamResponse(stream, newNodeId, userInput.trim())
-        } else {
-          throw new Error('未能获取到流式响应')
-        }
       }
 
     } catch (error) {
@@ -1006,6 +1007,15 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     setNewNodeDialog(null)
     setUserInput('')
   }, [])
+
+  async function handleAddNodeStream(requestParams: ConversationRequestParams, newNodeId: string) {
+    const stream = await conversationAPI.add(requestParams)
+    if (stream) {
+      await handleStreamResponse(stream, newNodeId, userInput.trim())
+    } else {
+      throw new Error('未能获取到流式响应')
+    }
+  }
 
   // 更新确认状态
   const [updateConfirm, setUpdateConfirm] = useState<{
