@@ -3,6 +3,18 @@
   display: flex;
   flex-direction: column;
   background: white;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* GitHub页面特定样式 */
+.github-page-container {
+  background: var(--github-bg-light, #ffffff);
+  color: var(--github-text-light, #333333);
+}
+
+.github-page-container.dark {
+  background: var(--github-bg-dark, #0d1117);
+  color: var(--github-text-dark, #f0f6fc);
 }
 
 .page-header {
@@ -11,6 +23,7 @@
   padding: 16px 20px;
   border-bottom: 1px solid #e5e5e5;
   background: #f8f9fa;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .back-btn {
@@ -22,7 +35,7 @@
   padding: 8px 12px;
   border-radius: 6px;
   margin-right: 12px;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, color 0.3s ease;
 }
 
 .back-btn:hover {
@@ -34,6 +47,7 @@
   font-size: 20px;
   font-weight: 600;
   color: #333;
+  transition: color 0.3s ease;
 }
 
 .page-content {
@@ -210,6 +224,11 @@
 .github-info {
   text-align: center;
   margin-bottom: 32px;
+  padding: 24px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .github-icon {
@@ -217,64 +236,404 @@
   margin-bottom: 12px;
 }
 
+.github-info h3 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  transition: color 0.3s ease;
+}
+
 .repo-desc {
-  font-size: 14px;
   color: #666;
-  margin: 8px 0 20px 0;
+  margin-bottom: 20px;
+  font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.github-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .github-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  background: #24292e;
+  padding: 10px 20px;
+  background: #0969da;
   color: white;
   border: none;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
 }
 
 .github-btn:hover {
-  background: #1b1f23;
+  background: #0860ca;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(9, 105, 218, 0.3);
 }
 
-.repo-stats {
+/* 文档切换器样式 */
+.doc-switcher {
+  margin-bottom: 24px;
+}
+
+.doc-tabs {
   display: flex;
-  justify-content: space-around;
-  margin-bottom: 32px;
-  padding: 20px;
   background: #f8f9fa;
   border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+  transition: background-color 0.3s ease;
 }
 
-.stat-item {
-  text-align: center;
-}
-
-.stat-icon {
-  display: block;
-  font-size: 20px;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  display: block;
-  font-size: 12px;
+.doc-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
   color: #666;
-  margin-bottom: 4px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-.stat-value {
-  display: block;
-  font-size: 18px;
-  font-weight: 600;
+.doc-tab:hover {
+  background: #e9ecef;
   color: #333;
 }
 
-/* 暗色主题 */
+.doc-tab.active {
+  background: white;
+  color: #0969da;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 文档内容样式 */
+.doc-content {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #0969da;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-state p {
+  color: #dc3545;
+  font-size: 16px;
+}
+
+.markdown-container {
+  padding: 0;
+}
+
+.doc-header {
+  padding: 24px 32px 0;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 0;
+  transition: border-color 0.3s ease;
+}
+
+.doc-header h1 {
+  margin: 0 0 24px 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  transition: color 0.3s ease;
+}
+
+.markdown-content {
+  padding: 32px;
+  line-height: 1.6;
+  color: #333;
+  max-width: none;
+  transition: color 0.3s ease;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  transition: color 0.3s ease;
+}
+
+.markdown-content h1 {
+  font-size: 24px;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 8px;
+}
+
+.markdown-content h2 {
+  font-size: 20px;
+}
+
+.markdown-content h3 {
+  font-size: 18px;
+}
+
+.markdown-content p {
+  margin-bottom: 16px;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-bottom: 16px;
+  padding-left: 24px;
+}
+
+.markdown-content li {
+  margin-bottom: 4px;
+}
+
+.markdown-content code {
+  background: #f6f8fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  transition: background-color 0.3s ease;
+}
+
+.markdown-content pre {
+  background: #f6f8fa;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  transition: background-color 0.3s ease;
+}
+
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #0969da;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #666;
+  font-style: italic;
+  transition: color 0.3s ease;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #e9ecef;
+  padding: 8px 12px;
+  text-align: left;
+  transition: border-color 0.3s ease;
+}
+
+.markdown-content th {
+  background: #f8f9fa;
+  font-weight: 600;
+  transition: background-color 0.3s ease;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+}
+
+.markdown-content em {
+  font-style: italic;
+}
+
+.markdown-content a {
+  color: #0969da;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.markdown-content a:hover {
+  text-decoration: underline;
+}
+
+/* 暗色主题样式 */
+.github-page-container.dark .page-header {
+  background: #21262d;
+  border-bottom-color: #30363d;
+}
+
+.github-page-container.dark .page-header h2 {
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .back-btn {
+  color: #8b949e;
+}
+
+.github-page-container.dark .back-btn:hover {
+  background: #30363d;
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .github-info {
+  background: #21262d;
+  border-color: #30363d;
+}
+
+.github-page-container.dark .github-info h3 {
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .repo-desc {
+  color: #8b949e;
+}
+
+.github-page-container.dark .doc-tabs {
+  background: #21262d;
+}
+
+.github-page-container.dark .doc-tab {
+  color: #8b949e;
+}
+
+.github-page-container.dark .doc-tab:hover {
+  background: #30363d;
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .doc-tab.active {
+  background: #0d1117;
+  color: #58a6ff;
+}
+
+.github-page-container.dark .doc-content {
+  background: #0d1117;
+  border-color: #30363d;
+}
+
+.github-page-container.dark .doc-header {
+  border-bottom-color: #30363d;
+}
+
+.github-page-container.dark .doc-header h1 {
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .markdown-content {
+  color: #e6edf3;
+}
+
+.github-page-container.dark .markdown-content h1,
+.github-page-container.dark .markdown-content h2,
+.github-page-container.dark .markdown-content h3,
+.github-page-container.dark .markdown-content h4,
+.github-page-container.dark .markdown-content h5,
+.github-page-container.dark .markdown-content h6 {
+  color: #f0f6fc;
+}
+
+.github-page-container.dark .markdown-content h1 {
+  border-bottom-color: #30363d;
+}
+
+.github-page-container.dark .markdown-content code {
+  background: #161b22;
+  color: #e6edf3;
+}
+
+.github-page-container.dark .markdown-content pre {
+  background: #161b22;
+}
+
+.github-page-container.dark .markdown-content blockquote {
+  color: #8b949e;
+  border-left-color: #58a6ff;
+}
+
+.github-page-container.dark .markdown-content th,
+.github-page-container.dark .markdown-content td {
+  border-color: #30363d;
+}
+
+.github-page-container.dark .markdown-content th {
+  background: #21262d;
+}
+
+.github-page-container.dark .markdown-content a {
+  color: #58a6ff;
+}
+
+.github-page-container.dark .loading-state p,
+.github-page-container.dark .error-state p {
+  color: #e6edf3;
+}
+
+.github-page-container.dark .loading-spinner {
+  border-color: #30363d;
+  border-top-color: #58a6ff;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .github-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .doc-tabs {
+    flex-direction: column;
+  }
+  
+  .markdown-content {
+    padding: 16px;
+  }
+  
+  .doc-header {
+    padding: 16px 16px 0;
+  }
+}
+
+/* 原有的暗色主题样式保持不变 */
 [data-theme="dark"] .page-container {
   background: #1a202c;
   color: white;

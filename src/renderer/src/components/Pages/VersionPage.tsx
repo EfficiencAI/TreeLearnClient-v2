@@ -21,7 +21,7 @@ const VersionPage: React.FC<VersionPageProps> = ({ onBack }) => {
           <p className="version">版本 2.0.0</p>
           <p className="build">构建号: 20241201</p>
         </div>
-        
+
         <div className="info-group">
           <h4>更新日志</h4>
           <div className="changelog">
@@ -44,7 +44,7 @@ const VersionPage: React.FC<VersionPageProps> = ({ onBack }) => {
             </div>
           </div>
         </div>
-        
+
         <div className="info-group">
           <h4>技术栈</h4>
           <div className="tech-stack">
