@@ -30,7 +30,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchToRegiste
       if (response.code === 200 && response.obj) {
         onLoginSuccess({ 
           userId: userId.trim(), 
-          username: response.obj.username || userId.trim() 
+          username: response.obj.userName || userId.trim() 
         })
       } else {
         setError('用户不存在，请检查用户ID或注册新账号')

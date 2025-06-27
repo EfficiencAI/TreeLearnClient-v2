@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, JSX } from 'react'
 import ReactMarkdown from 'react-markdown'
 import DOMPurify from 'dompurify'
 import remarkGfm from 'remark-gfm'

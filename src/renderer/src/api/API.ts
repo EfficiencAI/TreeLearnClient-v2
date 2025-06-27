@@ -5,6 +5,10 @@ export interface ApiResponse<T = unknown> {
   obj: T
 }
 
+export interface LoginResult{
+  userName: string
+}
+
 // 用户相关接口参数类型
 export interface CreateUserParams {
   userId: string
@@ -202,7 +206,7 @@ class ApiClient {
   }
 
   // 获取用户
-  async getUser(userId: string): Promise<ApiResponse> {
+  async getUser(userId: string): Promise<ApiResponse<LoginResult>> {
     return this.get('/user/get', { userId })
   }
 
