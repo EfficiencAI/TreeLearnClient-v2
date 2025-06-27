@@ -796,6 +796,8 @@ const ChatArea: React.FC<ChatAreaProps> = ({
     try {
       const { parentNodeId, nodeType, contextStartIdx, contextEndIdx, isUpdateMode, updateNodeId } = newNodeDialog
       
+      console.log(parentNodeId)
+
       if (isUpdateMode && updateNodeId) {
         // 更新模式
         console.log('更新节点:', updateNodeId)
@@ -812,7 +814,7 @@ const ChatArea: React.FC<ChatAreaProps> = ({
           sessionName: currentSession,
           conversationNodeId: updateNodeId,
           registrationCertificate: '',
-          parentId: '', // 更新时不需要修改父节点关系
+          parentId: parentNodeId,
           userMessage: userInput.trim(),
           contextStartIdx: String(contextStartIdx || 0),
           contextEndIdx: String(contextEndIdx || -1),
